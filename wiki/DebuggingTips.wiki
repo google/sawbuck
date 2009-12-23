@@ -1,0 +1,14 @@
+#summary Debugging Tips
+
+= Introduction =
+
+Here's a list of little tricks that may be helpful is you play around with the code. While they stay opened, you can open them again, so Sawbuck can't turn them on. (Issue 
+
+
+= Can't Turn on Capture? =
+
+If you stop the Sawbuck process while it is capturing, some [http://msdn.microsoft.com/en-us/library/aa363694(VS.85).aspx Event Trace Sessions] sessions may be left opened.
+
+To close them, you need to run {{{logman -ets stop <Session Name>}}} (in an admin command prompt if you are running on Vista or later). {{{logman -ets}}} on its own will show you the list of active sessions. The "{{{Sawbuck Log Session}}}" is an obvious one that needs to be closed. The other one that might not be obvious at first site is the "{{{NT Kernel Logger}}}".
+
+A [http://code.google.com/p/sawbuck/issues/detail?id=1 bug] has been filed for this so it may get fixed in the future.
