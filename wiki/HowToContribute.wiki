@@ -1,0 +1,6 @@
+#How to contribute to Sawbuck.
+
+= Details =
+
+Sawbuck uses the same tools and the same [http://dev.chromium.org/developers/contributing-code codereview process as Chrome].
+You might start by taking on one of the filed issues, post on the [http://groups.google.com/group/sawbuck-dev sawbuck-dev] mailing list to find a reviewer, then upload your change for review.
