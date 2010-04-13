@@ -14,7 +14,7 @@ To start capturing an offline log, you need to do something like the following:
 {{{
 :: Create a kernel logger session and make it log image events to the file kernel.etl.
 :: You only need this session if you want to lookup symbols for the traces later.
-logman create trace -ets "NT Kernel Logger" -ct cycle -mode globalsequence -o kernel.etl -p "Windows Kernel Trace" img
+logman create trace -ets "NT Kernel Logger" -ct cycle -mode globalsequence -o kernel.etl -p "Windows Kernel Trace" img,process
 :: Create the logger session.
 logman create trace -ets "Log Session"  -ct cycle -mode globalsequence -o log.etl
 :: Turn on the Chrome ChromeFrame and Sawbuck providers.
