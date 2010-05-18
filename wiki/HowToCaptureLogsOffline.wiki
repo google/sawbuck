@@ -17,11 +17,14 @@ To start capturing an offline log, you need to do something like the following:
 logman create trace -ets "NT Kernel Logger" -ct cycle -mode globalsequence -o kernel.etl -p "Windows Kernel Trace" (img,process)
 :: Create the logger session.
 logman create trace -ets "Log Session"  -ct cycle -mode globalsequence -o log.etl
-:: Turn on the Chrome ChromeFrame and Sawbuck providers.
+:: Turn on the Chrome, ChromeFrame and Sawbuck providers.
 logman update trace -ets "Log Session" -p {0562BFC3-2550-45B4-BD8E-A310583D3A6F} 0xffffffff 4
 logman update trace -ets "Log Session" -p {C43B1318-C63D-465B-BCF4-7A89A369F8ED} 0xffffffff 4
 logman update trace -ets "Log Session" -p {7FE69228-633E-4F06-80C1-527FEA23E3A7} 0xffffffff 4
 }}}
+:: And the Chrome Perf provider
+logman update trace -ets "Log Session" -p {3DADA31D-19EF-4dc1-B345-037927193422} 0xffffffff 4
+
 
 To stop the log, you can do something like the following:
 
