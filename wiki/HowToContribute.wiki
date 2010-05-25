@@ -1,2 +1,5 @@
 Sawbuck uses the same tools and the same [http://dev.chromium.org/developers/contributing-code codereview process as Chrome].
 You might start by taking on one of the filed issues, post on the [http://groups.google.com/group/sawbuck-dev sawbuck-dev] mailing list to find a reviewer, then upload your change for review.
+
+If you have integrated ETW logging in your own project, and would like to register a new provider, note that the provider registration is done by the installer. See 
+http://code.google.com/p/sawbuck/source/browse/trunk/sawbuck/installer/sawbuck.wxs#140.
