@@ -12,11 +12,19 @@ To start capturing an offline log, you need to do something like the following:
 
 *startlog.bat*:
 {{{
+:: The -ct argument is not supported on XP, so avoid using it there.
+setlocal
+set clock_type=-ct cycle
+ver | findstr "XP" > nul
+if not %ERRORLEVEL% == 0 goto main
+set clock_type=
+
+:main
 :: Create a kernel logger session and make it log image events to the file kernel.etl.
 :: You only need this session if you want to lookup symbols for the traces later.
-logman create trace -ets "NT Kernel Logger" -ct cycle -mode globalsequence -o kernel.etl -p "Windows Kernel Trace" (img,process)
+logman create trace -ets "NT Kernel Logger" %clock_type% -mode globalsequence -o kernel.etl -p "Windows Kernel Trace" (img,process)
 :: Create the logger session.
-logman create trace -ets "Log Session"  -ct cycle -mode globalsequence -o log.etl
+logman create trace -ets "Log Session" %clock_type% -mode globalsequence -o log.etl
 :: Turn on the Chrome, ChromeFrame and Sawbuck providers.
 logman update trace -ets "Log Session" -p {0562BFC3-2550-45B4-BD8E-A310583D3A6F} 0xffffffff 4
 logman update trace -ets "Log Session" -p {C43B1318-C63D-465B-BCF4-7A89A369F8ED} 0xffffffff 4
