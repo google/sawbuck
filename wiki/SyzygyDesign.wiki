@@ -174,9 +174,9 @@ Recomposition of the reordered PE image is the process of:
 
 === Symbol Updating ===
 
-The symbol updating involves adding two address relocation streams to the PDB file. The two streams are the *OmapTo* and the *OmapFrom* streams which contain forward and backward mappings between addresses in the original and reordered binary.
+The symbol updating involves adding two address relocation streams to the PDB file. The two streams are the *!OmapTo* and the *!OmapFrom* streams which contain forward and backward mappings between addresses in the original and reordered binary.
 
-This is primarily tedious because the PDB file format is undocumented. However, the [http://ccimetadata.codeplex.com/ Common Compiler Infrastructure] project, a Microsoft open source project, has shed light on the PDB file format and the structures involved in describing Omap data. From examination of some of that code, it appears that adding the Omap data to the PDB file involves adding the two new streams to the Pdb file and updating the DbiDbg header in the Dbi info stream. 
+This is primarily tedious because the PDB file format is undocumented. However, the [http://ccimetadata.codeplex.com/ Common Compiler Infrastructure] project, a Microsoft open source project, has shed light on the PDB file format and the structures involved in describing Omap data. From examination of some of that code, it appears that adding the Omap data to the PDB file involves adding the two new streams to the Pdb file and updating the !DbiDbg header in the Dbi info stream. 
 
 The PDB file format is much like compound documents in that each PDB file contains multiple streams of distinct information. The streams are however not hierarchical, nor named, as in compound documents, but rather are referred by their ordinal number. The OmapTo and OmapFrom address maps are stored in two distinct streams, and their respective stream numbers are stored in a DbiDbg Header. This structure seems to appear at the end of the Dbi information stream, which itself has a fixed stream number, and is a concatenation of parts described by fields in the Dbi header.
 
