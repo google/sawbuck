@@ -64,10 +64,11 @@ Here are two graphs illustrating the page fault patterns in chrome.dll before an
 
 === Page faults before reordering. ===
 
-[http://sawbuck.googlecode.com/files/graph-before.png http://sawbuck.googlecode.com/files/graph-before.png]
+<img src="http://sawbuck.googlecode.com/files/graph-before.png" width="100%" />
 
-=== Page faults before reordering. ===
-[http://sawbuck.googlecode.com/files/graph-after.png http://sawbuck.googlecode.com/files/graph-after.png]
+=== Page faults after reordering. ===
+
+<img src="http://sawbuck.googlecode.com/files/graph-after.png" width="100%" />
 
 In this version of chrome.dll, code occupies relative addresses 0x00000000 through 0x00E66200; notice how the page fault pattern in that range of addresses is a pleasing, monotonically increasing pattern. The upper half of the latter image still contains the same random pattern, as data has not been reordered. 
 
