@@ -62,7 +62,12 @@ Since this was captured in a virtual machine, wall clock times should still be v
 
 Here are two graphs illustrating the page fault patterns in chrome.dll before and after reordering, respectively. The red points are hard page faults whereas the green points are soft faults, and the yellow line in the graph is the launch time of the first (and only) Chrome renderer process.
 
-TODO(siggi): Insert before and after images.
+=== Page faults before reordering. ===
+
+[http://sawbuck.googlecode.com/files/graph-before.png http://sawbuck.googlecode.com/files/graph-before.png]
+
+=== Page faults before reordering. ===
+[http://sawbuck.googlecode.com/files/graph-after.png http://sawbuck.googlecode.com/files/graph-after.png]
 
 In this version of chrome.dll, code occupies relative addresses 0x00000000 through 0x00E66200; notice how the page fault pattern in that range of addresses is a pleasing, monotonically increasing pattern. The upper half of the latter image still contains the same random pattern, as data has not been reordered. 
 
