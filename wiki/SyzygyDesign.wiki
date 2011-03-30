@@ -1,0 +1,54 @@
+#sidebar TableOfContents
+
+= Syzygy =
+
+Profile guided, post-link executable reordering.
+
+== Contents ==
+
+<wiki:toc max_depth="2" />
+
+== Objective ==
+
+Syzygy is a suite of tools to perform profile-guided, function-level reordering of Windows PE executables, to optimize their layout for improved performance, notably for improved paging patterns.
+
+From initial profiling, it's not unreasonable to think that Chrome's cold start paging traffic can be reduced by 75%, and that the working set contribution from image code and data could be reduced by 40% or so.
+
+Syzygy generates accurate symbol information files for the reordered binaries, to make it possible to debug reordered binaries, and to analyze crash reports involving reordered binaries. 
+
+== Background ==
+
+The default symbol ordering chosen by the Microsoft Visual Studio linker does not take execution order into account, so the symbol ordering is effectively random with respect to the execution order. This causes a lot of unnecessary and awkwardly shaped paging traffic on cold start, and results in poor locality of code and data within each page in the image. The poor locality, in turn, results in a working set that's larger than necessary and an elevated rate of minor page faults.
+
+Aside from improving on cold start times and working set density, improving the executable layout can also improve cache efficiencies for the TLB, instruction and data caches.
+
+Developers on both the Open Office and the Firefox projects have noticed lately that paging traffic is a large contributor to cold start launch times, and have spent some time trying to analyze and optimize this. 
+
+See e.g. these two pages:
+   * [http://wiki.services.openoffice.org/wiki/Performance/Reorder_Symbols_For_Libraries Open Office - reorder symbols for libraries].
+   * [http://blog.mozilla.com/tglek/2010/04/19/windows-sucks-at-memory-mapped-io-during-startup/ FireFox - Windows sucks at memory-mapped IO].
+
+Both Firefox and Open Office have been down essentially the same path, they've: 
+   1. found paging traffic a large contributor to cold start launch times.
+   1. used existing tools, such as [http://msdn.microsoft.com/en-us/performance/cc825801.aspx Xperf], to look at the shape and volume of the paging traffic. 
+   1. used the Visual C++ compiler's profile hook to gather information about execution order.
+   1. used the Visual Studio linker to reorder the binaries with by passing it an ordering file to the =/order= flag.
+
+Both projects have abandoned this as they haven't been able to demonstrate an appreciable improvement in paging traffic or cold start times through this approach. See the [#Caveats caveats section] for a discussion of why this approach is non-viable. However, the Firefox project has made [http://blog.mozilla.com/tglek/2010/04/12/squeezing-every-last-bit-of-performance-out-of-the-linux-toolchain/ some strides on Linux], where [http://blog.mozilla.com/tglek/ Taras Glek] wrote [http://blog.mozilla.com/tglek/2010/04/07/icegrind-valgrind-plugin-for-optimizing-cold-startup/ Icegrind], a plugin to Valgrind that records information about the code and data accessed during Firefox startup. Taras has been able to show a 28% startup time improvement for Firefox on Linux, which demonstrates what can be accomplished with accurate data and full control of ordering.
+
+Microsoft has been reordering the Windows system and application binaries to optimize them for paging reduction, using a toolset reported to be derived from and/or built on top of the [http://research.microsoft.com/pubs/69850/tr-2001-50.pdf Vulcan research project]. Relatively little else is know about the tools or the methods they use. Looking at Windows system binaries like =ntoskrnl.exe=, it's apparent that their layout doesn't correspond with the Visual Studio toolchain's defaults, and their respective symbol files contain [http://msdn.microsoft.com/en-us/library/bb870605(VS.85).aspx OMAP re-mapping information]. The Microsoft [http://www.microsoft.com/windows/cse/bit_projects.mspx Binary Technologies Projects] may be involved in this.
+
+== Overview ==
+
+The Syzygy suite of tools performs profile-guided, post-link reordering of Windows PE binaries. 
+The tool suite is composed of the following components:
+   1. The =instrumenter= tool reads a PE image file and its symbol information, and writes an instrumented version of the image file to disk.
+   1. The =calltrace profiler= is a DLL exporting a profile hook that gets invoked for every function entry in the instrumented image file. The calltrace profiler yields a binary log file containing the addresses of the functions invoked along with timing information and process/thread affinity. 
+   1. The =ordering generator= reads the log file, then applies heuristics and an ordering strategy to come up with an improved ordering for the original binary. 
+   1. The =relinker= tool reads the original image file, its symbols and the ordering file, and outputs a reordered image file and a corresponding symbol file.
+
+By using binary instrumentation, Syzygy can achieve full coverage for all functions in the executable, even for thunks created by the compiler, functions linked from libraries or import thunks. 
+
+By capturing and processing a full trace of the functions invoked and their process/thread affinity, the =ordering generator= can discover not only temporal function relationships, but also process or thread specific clusterings. For Chrome in particular, it stands to reason that the browser process will behave very differently than a renderer process which will again behave differently than a plugin host process.
+
+By doing post-link reordering of the binaries, Syzygy gains full control over the order of the final image file, which allows the toolchain to attain the best possible results. This comes at the cost of some implementation complexity; see the detailed design for details.
