@@ -8,7 +8,7 @@
 
 == Objective ==
 
-Syzygy is a suite of tools to perform profile-guided, function-level reordering of 32 bit Windows PE executables, to optimize their layout for improved performance, notably for improved paging patterns.
+Syzygy is a suite of tools to perform profile-guided, function-level reordering of 32-bit Windows PE executables, to optimize their layout for improved performance, notably for improved paging patterns.
 
 Syzygy generates accurate symbol information files for the reordered binaries, to make it possible to debug reordered binaries, and to analyze crash reports involving reordered binaries. 
 
@@ -28,7 +28,7 @@ See e.g. these two pages:
    * [http://blog.mozilla.com/tglek/2010/04/19/windows-sucks-at-memory-mapped-io-during-startup/ Firefox - Windows sucks at memory-mapped IO].
 
 Both Firefox and Open Office have been down essentially the same path, they've: 
-   1. found paging traffic a large contributor to cold start launch times.
+   1. found paging traffic to be a large contributor to cold start launch times.
    1. used existing tools, such as [http://msdn.microsoft.com/en-us/performance/cc825801.aspx Xperf], to look at the shape and volume of the paging traffic. 
    1. used the Visual C++ compiler's profile hook to gather information about execution order.
    1. used the Visual Studio linker to reorder the binaries by passing it an ordering file to the */order* flag.
@@ -80,10 +80,10 @@ Notice also that the launch of the second renderer process occurs at around 2.25
 === Usage ===
 
 The Syzygy toolchain consists of:
-   1. An instrumenter tool, a command line executable that injects instrumentation code into the original binary.
-   1. A calltrace generator, a DLL the instrumented binary depends on.
-   1. An order generator, a Python script that reads the calltrace logs and generates an order file.
-   1. A relinker, a command line executable that reads the original executable, its symbol file and the order file, and outputs a relinked binary and the associated symbol file.
+   1. An instrumenter tool: a command line executable that injects instrumentation code into the original binary.
+   1. A calltrace generator: a DLL the instrumented binary depends on.
+   1. An order generator: a Python script that reads the calltrace logs and generates an order file.
+   1. A relinker: a command line executable that reads the original executable, its symbol file and the order file, and outputs a relinked binary and the associated symbol file.
 
 To use the toolset to reorder a binary the user needs to:
    1. Instrument the binary to reorder.
