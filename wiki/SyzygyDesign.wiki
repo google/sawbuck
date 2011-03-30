@@ -1,3 +1,5 @@
+#summary Design overview for the Syzygy toolchain.
+
 = Syzygy - profile guided, post-link executable reordering. =
 
 == Contents == 
