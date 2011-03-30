@@ -6,13 +6,14 @@
 
 <wiki:toc max_depth="3" />
 
-== Overview ==
+== Objective ==
 
-Syzygy is a suite of tools to perform profile-guided, function-level reordering of Windows PE executables, to optimize their layout for improved performance, notably for improved paging patterns.
-
-From initial profiling on the Chrome executables, it's not unreasonable to think that Chrome's cold start paging traffic can be reduced by better than 75%, and that the working set contribution from image code and data could be reduced by 40% or so.
+Syzygy is a suite of tools to perform profile-guided, function-level reordering of 32 bit Windows PE executables, to optimize their layout for improved performance, notably for improved paging patterns.
 
 Syzygy generates accurate symbol information files for the reordered binaries, to make it possible to debug reordered binaries, and to analyze crash reports involving reordered binaries. 
+
+The main initial goal is to accelerate Google Chrome cold start by reducing the volume of paging traffic by better than 80%, and by shaping the remaining paging traffic so that the executable file is read linearly from disk.
+As a secondary goal, Syzygy aims to reduce the working set contribution from image code and data by 40% or so.
 
 == Background ==
 
