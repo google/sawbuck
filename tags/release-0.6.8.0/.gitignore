@@ -1,0 +1,39 @@
+# Ignore GYP artifacts.
+*.sln
+*.suo
+*.ncb
+*.vcproj
+*.user
+*.rules
+
+# Ignore compiled Python files.
+*.pyc
+
+# Ignore build output directories
+sawbuck/Debug/
+sawbuck/Release
+syzygy/Debug/
+syzygy/Release
+
+# Ignore directories gclient syncs.
+base/
+build/
+
+skia/
+testing/
+third_party/distorm/
+third_party/icu/
+third_party/libevent/
+third_party/libjpeg/
+third_party/modp_b64/
+third_party/nss/
+third_party/python_24/
+third_party/skia/
+third_party/sqlite/
+third_party/wtl/
+third_party/zlib/
+tools/
+
+# Ignore SVN metadata.
+.svn
+
