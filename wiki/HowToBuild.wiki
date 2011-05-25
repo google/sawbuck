@@ -14,6 +14,11 @@ solutions = [
 ]
 }}}
 
+You can also do this by something like:
+{{{
+gclient config https://sawbuck.googlecode.com/svn/trunk --name src
+}}}
+
 In a command shell with the above directory as the current working directory, run "gclient sync". This will fetch all the sources and create your project files. Now open the solution file "src\sawbuck\sawbuck.sln" in Visual Studio and build the project. 
 
 This should build the sawbuck binary, the test logger and the sawbuck MSI file. 
