@@ -44,6 +44,8 @@ Syzygy requires all C++ code to have better than 50% unittest coverage, as measu
 After every submission, look at the next coverage report (you should get an email when it completes).
 If the new code does not meet the coverage requirement, either revert the change, or submit a fix to improve the unittest coverage. 
 
+Any significant feature addition must additionally be tested by an integration test, that tests the feature end-to-end. 
+
 == Release criteria ==
 
 TODO(siggi): release criteria.
