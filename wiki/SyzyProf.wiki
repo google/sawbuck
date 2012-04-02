@@ -30,7 +30,7 @@ A profiling session might go like this:
 > instrument.exe --verbose --call-trace-client=PROFILER --input-dll=original\chrome.dll --output-dll=instrumented\chrome.dll
 > start call_trace_service.exe start --verbose --enable-exits --trace-dir=traces
 > instrumented\chrome.exe
-> ... time passes ...
+    ... time passes ...
 > call_trace_service.exe stop
 > grinder.exe --output-file=chrome.callgrind traces\*.bin 
 > kcachegrind.exe chrome.callgrind
