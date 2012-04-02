@@ -1,0 +1,47 @@
+#summary SyzyProf is an instrumenting hierarchical performanc profiler for Chrome
+
+= Introduction =
+
+The end goal for SyzyProf is to be a turnkey instrumenting profiler that's able to instrument and profile any shipping or local build of Chrome on the spot, usable by anyone at any time, anywhere.
+
+SyzyProf will (eventually) aggregate data across:
+  * Multiple languages, notably C++, JavaScript (running in V8), and DART.
+  * Multiple threads inside Chrome, across Tasks.
+  * Multiple processes, across IPC boundaries.
+
+SyzyProf generates output files that are compatible with [http://kcachegrind.sourceforge.net/html/Home.html KCacheGrind], which is an excellent open-source profile visualization tool [http://sourceforge.net/projects/precompiledbin/files/kcachegrind.zip/download that's available for Windows as a binary].
+
+= Details =
+
+== How do I use it? ==
+
+To use SyzyProf, you must:
+  1. Build the Syzygy toolchain.
+  1. Instrument your Chrome or Chromium build.
+  1. Launch the call trace service.
+  1. Run the instrumented Chrome instance.
+  1. Aggregate the binary profile trace data with the grinder tool.
+  1. Open the grinder output file in [http://kcachegrind.sourceforge.net/html/Home.html KCacheGrind].
+  1. Profit!
+
+A profiling session might go like this:
+{{{
+> mkdir output
+> instrument.exe --verbose --call-trace-client=PROFILER --input-dll=original\chrome.dll --output-dll=instrumented\chrome.dll
+> start call_trace_service.exe start --verbose --enable-exits --trace-dir=traces
+> instrumented\chrome.exe
+> ... time passes ...
+> call_trace_service.exe stop
+> grinder.exe --output-file=chrome.callgrind traces\*.bin 
+> kcachegrind.exe chrome.callgrind
+}}}
+
+Note that SyzyProf needs the binary to be linked with the "/PROFILE" flag set, and that SyzyProf cannot at the present time instrument official Chrome binaries for boring reasons that will eventually be remedied.
+
+== How does it work? ==
+
+SyzyProf uses binary instrumentation to get a hook on every function entry, and then employs "return address swizzling" to get an exit hook. This is done by grabbing the return address on the stack at function entry, pushing it to a "shadow stack", and replacing it with the address of the exit hook.
+
+Each exit hook is an executable thunk, allocated from a thread-local stash. Each thunk contains a short instruction sequence that calls the main exit hook, and immediately following the thunk is the shadow stack data for that level of the shadow stack. This is more robust and performant than an explicit shadow stack, especially in the presence of non-local gotos and exceptions (which can implicitly pop the machine stack), as well as assembly tricks that can arbitrarily mess with the stack.
+
+The swizzling creates a problem with V8, which looks at the return addresses of certain runtime functions to find the JIT/JS code that invoked them. To work around this, V8 has been enhanced with a profiling hook, which gives the profiler an opportunity to resolve an address on stack, to the location of the profiler's stash of the original return address. Search for "SetReturnAddressLocationResolver" in [http://code.google.com/p/v8/source/browse/trunk/include/v8.h the V8 API include file]. Chrome has then been augmented to set this hook when running under instrumentation.
