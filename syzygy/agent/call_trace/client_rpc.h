@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "base/synchronization/lock.h"
-#include "base/threading/thread_local.h"
 #include "syzygy/agent/common/shadow_stack.h"
 #include "syzygy/trace/client/rpc_session.h"
 
@@ -35,7 +34,7 @@ extern "C" void _cdecl _indirect_penter_dllmain();
 extern void pexit();
 extern void pexit_dllmain();
 
-namespace agent {
+namespace call_trace {
 namespace client {
 
 class Client {
@@ -48,7 +47,7 @@ class Client {
   BOOL WINAPI DllMain(HMODULE module, DWORD reason, LPVOID reserved);
 
  protected:
-  typedef agent::EntryFrame EntryFrame;
+  typedef call_trace::EntryFrame EntryFrame;
   friend void _indirect_penter();
   friend void _indirect_penter_dll_main();
   friend void pexit();
@@ -180,7 +179,7 @@ class Client {
   RetAddr LogEvent_FunctionExit(const void* stack,
                                 RetValueWord retval);
 
-  struct StackEntry : public agent::StackEntryBase {
+  struct StackEntry : public call_trace::StackEntryBase {
     // The function address invoked, from which this stack entry returns.
     FuncAddr function_address;
   };
@@ -209,13 +208,13 @@ class Client {
   base::Lock init_lock_;
 
   // Our RPC session state.
-  trace::client::RpcSession session_;
+  RpcSession session_;
 
-  // This points to our per-thread state.
-  mutable base::ThreadLocalPointer<ThreadLocalData> tls_;
+  // TLS index to our thread local data.
+  DWORD tls_index_;
 };
 
-}  // namespace agent::client
-}  // namespace agent
+}  // namespace call_trace::client
+}  // namespace call_trace
 
 #endif  // SYZYGY_AGENT_CALL_TRACE_CLIENT_RPC_H_

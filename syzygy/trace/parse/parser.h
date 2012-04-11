@@ -27,7 +27,7 @@
 #include "syzygy/core/address_space.h"
 #include "syzygy/trace/protocol/call_trace_defs.h"
 
-namespace trace {
+namespace call_trace {
 namespace parser {
 
 typedef sym_util::ModuleInformation ModuleInformation;
@@ -127,11 +127,7 @@ class Parser {
 class ParseEventHandler {
  public:
   // Issued for the first call-trace event occurring in an instrumented module.
-  // data may be NULL for parse engines in which it is unsupported or for
-  // processes for which it has not been recorded.
-  virtual void OnProcessStarted(base::Time time,
-                                DWORD process_id,
-                                const TraceSystemInfo* data) = 0;
+  virtual void OnProcessStarted(base::Time time, DWORD process_id) = 0;
 
   // Issued following the last call-trace event for the process given by
   // @p process_id.
@@ -184,10 +180,10 @@ class ParseEventHandler {
                                  DWORD process_id,
                                  DWORD thread_id,
                                  size_t num_invocations,
-                                 const TraceBatchInvocationInfo* data) = 0;
+                                 const InvocationInfoBatch* data) = 0;
 };
 
-}  // namespace trace::parser
-}  // namespace trace
+}  // namespace call_trace::parser
+}  // namespace call_trace
 
 #endif  // SYZYGY_TRACE_PARSE_PARSER_H_

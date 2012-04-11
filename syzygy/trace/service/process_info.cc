@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// This file declares the trace::service::ProcessInfo class which
+// This file declares the call_trace::service::ProcessInfo class which
 // retrieves and encapsulates the process related information captured
 // within a trace file.
 
@@ -27,9 +27,6 @@
 
 // From advapi32.dll, but including ntsecapi.h causes conflicting declarations.
 extern "C" ULONG NTAPI LsaNtStatusToWinError(__in NTSTATUS status);
-
-namespace trace {
-namespace service {
 
 namespace {
 
@@ -72,117 +69,6 @@ bool GetPBI(uint32 pid, HANDLE handle, PROCESS_BASIC_INFORMATION* pbi) {
   return true;
 }
 
-// Given a process and an address in its internal memory, returns the maximum
-// number of bytes owned by the process starting at that address. This is done
-// by looking up how many consecutive pages containing the given address are
-// allocated by the given process. Returns true on success (with the number of
-// bytes that can be safely read in @p size), false otherwise (@p size set to
-// zero).
-bool GetMaximumMemorySize(HANDLE process, void* remote_address, size_t* size) {
-  DCHECK(remote_address != NULL);
-  DCHECK(size != NULL);
-
-  *size = 0;
-
-  MEMORY_BASIC_INFORMATION mem_info = {};
-  if (VirtualQueryEx(process, remote_address, &mem_info,
-                     sizeof(mem_info)) == 0) {
-    DWORD error = ::GetLastError();
-    LOG(ERROR) << "VirtualQueryEx failed: " << com::LogWe(error) << ".";
-    return false;
-  }
-
-  // If the memory contains code or is not readable return an error.
-  if (mem_info.Protect == PAGE_NOACCESS || mem_info.Protect == PAGE_EXECUTE) {
-    LOG(ERROR) << "Address being dereferenced does not contain readable data.";
-    return false;
-  }
-
-  // Get the size that may be read after the provided address.
-  size_t region_offset = reinterpret_cast<const uint8*>(remote_address) -
-      reinterpret_cast<const uint8*>(mem_info.BaseAddress);
-  *size = mem_info.RegionSize - region_offset;
-
-  return true;
-}
-
-bool ReadEnvironmentString(HANDLE handle,
-                           const wchar_t* remote_env_string,
-                           size_t max_size,
-                           std::vector<wchar_t>* environment) {
-  DCHECK(environment != NULL);
-
-  environment->clear();
-
-  const uint8* remote_read_cursor =
-      reinterpret_cast<const uint8*>(remote_env_string);
-  std::vector<wchar_t> buffer;
-
-  size_t max_elems = max_size / sizeof(buffer[0]);
-
-  // We use a large buffer to minimize calls to ReadProcessMemory.
-  size_t buffer_elems = 128 * 1024;
-  if (buffer_elems < max_elems)
-    buffer_elems = max_elems;
-  buffer.resize(buffer_elems);
-  size_t elems_left = max_elems;
-
-  size_t nulls_in_a_row = 0;
-  while (elems_left > 0) {
-    // Figure out how much data to read in this call.
-    size_t elems_to_read = buffer.size();
-    if (elems_to_read > elems_left)
-      elems_to_read = elems_left;
-    size_t bytes_to_read = elems_to_read * sizeof(buffer[0]);
-
-    // Read the next chunk of data.
-    SIZE_T bytes_read = 0;
-    if (!::ReadProcessMemory(handle, remote_read_cursor, &buffer[0],
-                             bytes_to_read, &bytes_read)) {
-      DWORD error = ::GetLastError();
-
-      // It's possible for us to get a failure with ERROR_PARTIAL_COPY if we're
-      // trying to read pages that are not currently mapped to memory or are
-      // dirty. Since we do get the number of bytes that were successfully read
-      // we can silently ignore this. We'll only bail if we're unable to
-      // advance the read cursor at all.
-      if (error != ERROR_PARTIAL_COPY) {
-        LOG(ERROR) << "Unable to read environment string: " << com::LogWe(error)
-                   << ".";
-        return false;
-      }
-    }
-    size_t elems_read = bytes_read / sizeof(buffer[0]);
-    bytes_read = elems_read * sizeof(buffer[0]);
-
-    // If we got a partial read of zero bytes, we're stuck.
-    if (elems_read == 0) {
-      LOG(ERROR) << "Unable to read environment string.";
-      return false;
-    }
-
-    remote_read_cursor += bytes_read;
-
-    // Scan through the buffer looking for the terminating NULLs.
-    size_t i = 0;
-    for (; i < elems_to_read && nulls_in_a_row < 2; ++i) {
-      if (buffer[i] == 0)
-        ++nulls_in_a_row;
-      else
-        nulls_in_a_row = 0;
-    }
-
-    environment->insert(environment->end(), buffer.begin(), buffer.begin() + i);
-
-    if (nulls_in_a_row == 2)
-      return true;
-  }
-
-  LOG(ERROR) << "The environment appears to be malformed.";
-
-  return false;
-}
-
 // Extract the exe path and command line for the process given by pid/handle.
 // Note that there are other ways to retrieve the exe path, but since this
 // function will already be spelunking in the same area (to get the command
@@ -190,11 +76,9 @@ bool ReadEnvironmentString(HANDLE handle,
 bool GetProcessStrings(uint32 pid,
                        HANDLE handle,
                        FilePath* exe_path,
-                       std::wstring* cmd_line,
-                       std::vector<wchar_t>* environment) {
+                       std::wstring* cmd_line) {
   DCHECK(exe_path != NULL);
   DCHECK(cmd_line != NULL);
-  DCHECK(environment != NULL);
 
   // Fetch the basic process information.
   PROCESS_BASIC_INFORMATION pbi = {};
@@ -238,7 +122,7 @@ bool GetProcessStrings(uint32 pid,
   std::wstring temp_exe_path;
   size_t num_chars_in_path = string_value[0].Length / sizeof(wchar_t);
   if (!::ReadProcessMemory(handle, string_value[0].Buffer,
-                           WriteInto(&temp_exe_path, num_chars_in_path + 1),
+                           WriteInto(&temp_exe_path, num_chars_in_path+ 1),
                            string_value[0].Length, NULL)) {
     DWORD error = ::GetLastError();
     LOG(ERROR) << "Failed to read the exe path for PID=" << pid
@@ -257,32 +141,6 @@ bool GetProcessStrings(uint32 pid,
                << ": " << com::LogWe(error) << ".";
     return false;
   }
-
-  // Get the environment string. Note that this a pointer into a remote process
-  // so we can't directly dereference it. This is not documented directly in
-  // winternl.h, but it is documented here: http://goto.google.com/win-proc-env
-  const size_t kEnvironmentStringOffset = 0x48;
-  wchar_t* remote_env_string = NULL;
-  if (!::ReadProcessMemory(handle, user_proc_params + kEnvironmentStringOffset,
-                           &remote_env_string, sizeof(remote_env_string),
-                           NULL)) {
-    DWORD error = ::GetLastError();
-    LOG(ERROR) << "Failed to read environment variable string for PID=" << pid
-               << ": " << com::LogWe(error) << ".";
-    return false;
-  }
-
-  // Get an upper bound on the size of the environment string. It doesn't have
-  // the size encoded within it directly, and this gives us an upper bound by
-  // determining how much data the remote process owns starting at the given
-  // location.
-  size_t max_size = 0;
-  if (!GetMaximumMemorySize(handle, remote_env_string, &max_size))
-    return false;
-
-  // Finally, read the environment string.
-  if (!ReadEnvironmentString(handle, remote_env_string, max_size, environment))
-    return false;
 
   return true;
 }
@@ -379,15 +237,15 @@ bool GetMemoryRange(uint32 pid, HANDLE handle, uint32* base_addr,
 
 }  // namespace
 
+namespace call_trace {
+namespace service {
+
 ProcessInfo::ProcessInfo()
     : process_id(0),
       exe_base_address(0),
       exe_image_size(0),
       exe_checksum(0),
       exe_time_date_stamp(0) {
-  ::memset(&os_version_info, 0, sizeof(os_version_info));
-  ::memset(&system_info, 0, sizeof(system_info));
-  ::memset(&memory_status, 0, sizeof(memory_status));
 }
 
 ProcessInfo::~ProcessInfo() {
@@ -398,10 +256,6 @@ void ProcessInfo::Reset() {
   process_id = 0;
   executable_path.clear();
   command_line.clear();
-  environment.clear();
-  ::memset(&os_version_info, 0, sizeof(os_version_info));
-  ::memset(&system_info, 0, sizeof(system_info));
-  ::memset(&memory_status, 0, sizeof(memory_status));
   exe_base_address = 0;
   exe_image_size = 0;
   exe_checksum = 0;
@@ -425,31 +279,9 @@ bool ProcessInfo::Initialize(uint32 pid) {
 
   process_id = pid;
 
-  // Get the executable path, command line and environment string.
+  // Get the executable path and command line.
   if (!GetProcessStrings(process_id, process_handle,
-                         &executable_path, &command_line, &environment)) {
-    Reset();
-    return false;
-  }
-
-  // Get the operating system and hardware information.
-  os_version_info.dwOSVersionInfoSize = sizeof(os_version_info);
-  if (!::GetVersionEx(
-      reinterpret_cast<OSVERSIONINFO*>(&os_version_info))) {
-    DWORD error = ::GetLastError();
-    LOG(ERROR) << "Failed to get OS version information: "
-               << com::LogWe(error) << ".";
-    Reset();
-    return false;
-  }
-
-  ::GetSystemInfo(&system_info);
-
-  memory_status.dwLength = sizeof(memory_status);
-  if (!::GlobalMemoryStatusEx(&memory_status)) {
-    DWORD error = ::GetLastError();
-    LOG(ERROR) << "Failed to get global memory status: "
-               << com::LogWe(error) << ".";
+                         &executable_path, &command_line)) {
     Reset();
     return false;
   }
@@ -474,5 +306,5 @@ bool ProcessInfo::Initialize(uint32 pid) {
   return true;
 }
 
-}  // namespace trace::service
-}  // namespace trace
+}  // namespace call_trace::service
+}  // namespace call_trace

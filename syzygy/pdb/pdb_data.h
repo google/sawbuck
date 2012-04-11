@@ -1,4 +1,4 @@
-// Copyright 2012 Google Inc.
+// Copyright 2011 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -146,6 +146,6 @@ struct PdbFixup {
 // exactly 12 bytes in size.
 COMPILE_ASSERT(sizeof(PdbFixup) == 12, pdb_fixup_wrong_size);
 
-}  // namespace pdb
+}  // namespace
 
 #endif  // SYZYGY_PDB_PDB_DATA_H_

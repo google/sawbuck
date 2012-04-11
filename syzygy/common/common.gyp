@@ -1,4 +1,4 @@
-# Copyright 2012 Google Inc.
+# Copyright 2011 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -81,23 +81,14 @@
       'sources': [
         'align.cc',
         'align.h',
-        'application.cc',
-        'application.h',
-        'application_impl.h',
-        'buffer_writer.cc',
-        'buffer_writer.h',
         'defs.cc',
         'defs.h',
-        'logging.cc',
-        'logging.h',
-        'path_util.cc',
-        'path_util.h',
+        'unique_list.h',
         'syzygy_version.cc',
         'syzygy_version.h',
       ],
       'dependencies': [
         'syzygy_version',
-        '<(DEPTH)/sawbuck/common/common.gyp:common',
       ],
       # This target exports a hard dependency because it exposes
       # files that from syzygy_version that are included from compiles.
@@ -108,12 +99,8 @@
       'type': 'executable',
       'sources': [
         'align_unittest.cc',
-        'application_unittest.cc',
-        'buffer_writer_unittest.cc',
         'common_unittests_main.cc',
-        'path_util_unittest.cc',
-        'unittest_util_unittest.cc',
-        'unittest_util.h',
+        'unique_list_unittest.cc',
         'syzygy_version_unittest.cc',
       ],
       'dependencies': [

@@ -20,12 +20,10 @@
 #include <rpc.h>
 #include <wtypes.h>
 
-#include "base/string_piece.h"
-
 // TODO(rogerm): Is there directly usable stuff in base/callback.h that
 //     might make this simpler/cleaner?
 
-namespace trace {
+namespace call_trace {
 namespace client {
 
 // Create an RPC binding.
@@ -35,8 +33,8 @@ namespace client {
 // @param out_handle A handle to the rpc binding will be returned here.
 //
 // @return true on success.
-bool CreateRpcBinding(const base::StringPiece16& protocol,
-                      const base::StringPiece16& endpoint,
+bool CreateRpcBinding(const wchar_t* protocol,
+                      const wchar_t* endpoint,
                       handle_t* out_handle);
 
 // Structure returned by RPC calls
@@ -114,7 +112,7 @@ RpcStatus InvokeRpc(const Func& func,
   return status;
 }
 
-}  // namespace trace::client
-}  // namespace trace
+}  // namespace call_trace::client
+}  // namespace call_trace
 
 #endif  // SYZYGY_TRACE_RPC_RPC_HELPERS_H_

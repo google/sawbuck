@@ -21,7 +21,7 @@
 #include "syzygy/trace/rpc/call_trace_rpc.h"
 #include "syzygy/trace/rpc/rpc_helpers.h"
 
-namespace trace {
+namespace call_trace {
 namespace client {
 
 RpcSession::RpcSession() : session_handle_(NULL), is_disabled_(false) {
@@ -80,12 +80,8 @@ bool RpcSession::CreateSession(TraceFileSegment* segment) {
   DCHECK(session_handle_ == NULL);
   DCHECK(rpc_binding_ == NULL);
 
-  std::wstring protocol;
-  std::wstring endpoint;
-  ::GetSyzygyCallTraceRpcProtocol(&protocol);
-  ::GetSyzygyCallTraceRpcEndpoint(instance_id_, &endpoint);
-
-  if (!CreateRpcBinding(protocol, endpoint, &rpc_binding_)) {
+  if (!CreateRpcBinding(kCallTraceRpcProtocol,
+                        kCallTraceRpcEndpoint, &rpc_binding_)) {
     is_disabled_ = true;
     return false;
   }
@@ -183,5 +179,5 @@ void RpcSession::FreeSharedMemory() {
   shared_memory_handles_.clear();
 }
 
-}  // namespace trace::client
-}  // namespace trace
+}  // namespace call_trace::client
+}  // namespace call_trace

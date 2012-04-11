@@ -18,13 +18,13 @@
 
 #include "base/file_util.h"
 #include "base/logging.h"
+#include "sawbuck/common/buffer_parser.h"
 #include "sawbuck/common/com_utils.h"
 #include "syzygy/common/align.h"
-#include "syzygy/trace/parse/parse_utils.h"
 
 using common::AlignUp;
 
-namespace trace {
+namespace call_trace {
 namespace parser {
 
 ParseEngineRpc::ParseEngineRpc() : ParseEngine("RPC", true) {
@@ -113,11 +113,12 @@ bool ParseEngineRpc::ConsumeTraceFile(const FilePath& trace_file_path) {
   const TraceFileHeader* file_header =
       reinterpret_cast<const TraceFileHeader*>(&raw_buffer[0]);
 
-  // Check the file signature.
-  if (0 != memcmp(&file_header->signature,
-                  &TraceFileHeader::kSignatureValue,
-                  sizeof(file_header->signature))) {
-    LOG(ERROR) << "Not a valid RPC call-trace file.";
+  // Validate the header size, which is the size of the static header structure
+  // plus the length (in bytes) of the wide-char command-line.
+  size_t expected_header_size = sizeof(TraceFileHeader) +
+                                sizeof(wchar_t) * file_header->command_line_len;
+  if (file_header->header_size != expected_header_size) {
+    LOG(ERROR) << "Invalid trace file header.";
     return false;
   }
 
@@ -136,20 +137,11 @@ bool ParseEngineRpc::ConsumeTraceFile(const FilePath& trace_file_path) {
     return false;
   }
 
-  // Populate the system information which will be fed to the OnProcessStarted
-  // event.
-  TraceSystemInfo system_info = {};
-  system_info.os_version_info = file_header->os_version_info;
-  system_info.system_info = file_header->system_info;
-  system_info.memory_status = file_header->memory_status;
-
-  // Parse the header blob. This fails if there is any extra data, enforcing
-  // a valid header size as a side effect.
-  std::wstring module_path;
-  std::wstring command_line;
-  if (!ParseTraceFileHeaderBlob(*file_header, &module_path, &command_line,
-                                &system_info.environment_strings)) {
-    LOG(ERROR) << "Unable to parse trace file header blob.";
+  // Check the file signature.
+  if (0 != memcmp(&file_header->signature,
+                  &TraceFileHeader::kSignatureValue,
+                  sizeof(file_header->signature))) {
+    LOG(ERROR) << "Not a valid RPC call-trace file.";
     return false;
   }
 
@@ -158,7 +150,7 @@ bool ParseEngineRpc::ConsumeTraceFile(const FilePath& trace_file_path) {
   // to a module in the process map.
   ModuleInformation module_info = {};
   module_info.base_address = file_header->module_base_address;
-  module_info.image_file_name = module_path;
+  module_info.image_file_name = file_header->module_path;
   module_info.module_size = file_header->module_size;
   module_info.image_checksum = file_header->module_checksum;
   module_info.time_date_stamp = file_header->module_time_date_stamp;
@@ -169,8 +161,7 @@ bool ParseEngineRpc::ConsumeTraceFile(const FilePath& trace_file_path) {
   big_timestamp.QuadPart = file_header->timestamp;
   base::Time start_time(base::Time::FromFileTime(
       *reinterpret_cast<FILETIME*>(&big_timestamp)));
-  event_handler_->OnProcessStarted(start_time, file_header->process_id,
-                                   &system_info);
+  event_handler_->OnProcessStarted(start_time, file_header->process_id);
 
   // Consume the body of the trace file.
   size_t next_segment = AlignUp(file_header->header_size,
@@ -284,5 +275,5 @@ bool ParseEngineRpc::ConsumeSegmentEvents(
   return true;
 }
 
-}  // namespace trace::parser
-}  // namespace trace
+}  // namespace call_trace::parser
+}  // namespace call_trace

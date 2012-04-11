@@ -1,4 +1,3 @@
-#!python
 # Copyright 2012 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,9 +41,9 @@ class ProductHandler(webapp.RequestHandler):
       product_id. The product ID. May be empty.
     """
     if not product_id:
-      products = product_db.Product.all()
-      products_result = [{'product_id': p.key().name()} for p in products]
-      result = {'products': products_result}
+      product_keys = product_db.Product.all(keys_only=True)
+      product_ids = [key.name() for key in product_keys]
+      result = {'product_ids': product_ids}
     else:
       product = product_db.Product.get_by_key_name(product_id)
       if not product:
@@ -78,7 +77,7 @@ class ProductHandler(webapp.RequestHandler):
       self.error(httplib.BAD_REQUEST)
       return
 
-    product_id = self.request.get('product_id')
+    product_id = self.request.get('product_id', None)
     if not product_id:
       self.error(httplib.BAD_REQUEST)
       return

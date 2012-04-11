@@ -185,15 +185,13 @@ class PERelinker {
   //     input_pdb_path and output_pdb_path may optionally have been set prior
   //     to calling this.
   // @post input_pe_file and input_image_layout may be called after this.
-  // @note This entrypoint is virtual for unittest/mocking purposes.
-  virtual bool Init();
+  bool Init();
 
   // Runs the relinker, generating an output image and PDB.
   //
   // @returns true on success, false otherwise.
   // @pre Init must have been called successfully.
-  // @note This entrypoint is virtual for unittest/mocking purposes.
-  virtual bool Relink();
+  bool Relink();
 
   // @name Intermediate data accessors.
   // @{

@@ -24,7 +24,7 @@
 #include "syzygy/pe/pe_file.h"
 #include "syzygy/trace/parse/parser.h"
 
-namespace trace {
+namespace call_trace {
 namespace parser {
 
 // This base class defines and implements the common event dispatching and
@@ -168,7 +168,7 @@ class ParseEngine {
   // @return true if the event was successfully dispatched, false otherwise.
   //     If an error occurred, the error_occurred_ flag will be set to
   //     true.
-  bool DispatchBatchInvocationEvent(EVENT_TRACE* event);
+  bool DispatchInvocationBatch(EVENT_TRACE* event);
 
   // Parses and dispatches dynamic library events (i.e., process and thread
   // attach/detach events). Called from DispatchEvent().
@@ -205,7 +205,7 @@ class ParseEngine {
   DISALLOW_COPY_AND_ASSIGN(ParseEngine);
 };
 
-}  // namespace trace::parser
-}  // namespace trace
+}  // namespace call_trace::parser
+}  // namespace call_trace
 
 #endif  // SYZYGY_TRACE_PARSE_PARSE_ENGINE_H_

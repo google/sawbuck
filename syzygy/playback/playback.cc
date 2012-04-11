@@ -14,7 +14,6 @@
 
 #include "syzygy/playback/playback.h"
 
-#include "syzygy/core/address.h"
 #include "syzygy/pdb/omap.h"
 #include "syzygy/pe/find.h"
 #include "syzygy/pe/metadata.h"
@@ -22,7 +21,8 @@
 
 namespace playback {
 
-using trace::parser::Parser;
+using block_graph::BlockGraph;
+using call_trace::parser::Parser;
 
 Playback::Playback(const FilePath& module_path,
                    const FilePath& instrumented_path,
@@ -41,7 +41,9 @@ Playback::~Playback() {
   parser_ = NULL;
 }
 
-bool Playback::Init(PEFile* pe_file, ImageLayout* image, Parser* parser) {
+bool Playback::Init(PEFile* pe_file,
+                    ImageLayout* image,
+                    Parser* parser) {
   // Fail if the function was already initialized,
   // or if the parameters aren't.
   DCHECK(pe_file != NULL);
@@ -207,54 +209,6 @@ bool Playback::MatchesInstrumentedModuleSignature(
         instr_signature_.module_size == module_info.module_size &&
         instr_signature_.module_time_date_stamp == module_info.time_date_stamp);
   }
-}
-
-const Playback::BlockGraph::Block* Playback::FindFunctionBlock(
-    DWORD process_id, FuncAddr function) {
-  DCHECK(parser_ != NULL);
-  DCHECK(image_ != NULL);
-
-  AbsoluteAddress64 abs_address =
-      reinterpret_cast<AbsoluteAddress64>(function);
-
-  // Resolve the module in which the called function resides.
-  const ModuleInformation* module_info =
-      parser_->GetModuleInformation(process_id, abs_address);
-
-  // We should be able to resolve the instrumented module.
-  if (module_info == NULL) {
-    LOG(ERROR) << "Failed to resolve module for entry event (pid="
-               << process_id << ", addr=0x" << function << ").";
-    return NULL;
-  }
-
-  // Ignore events not belonging to the instrumented module of interest.
-  if (!MatchesInstrumentedModuleSignature(*module_info)) {
-    return NULL;
-  }
-
-  // Convert the address to an RVA. We can only instrument 32-bit DLLs, so we're
-  // sure that the following address conversion is safe.
-  core::RelativeAddress rva(
-      static_cast<uint32>(abs_address - module_info->base_address));
-
-  // Convert the address from one in the instrumented module to one in the
-  // original module using the OMAP data.
-  rva = pdb::TranslateAddressViaOmap(omap_to(), rva);
-
-  // Get the block that this function call refers to.
-  const BlockGraph::Block* block = image_->blocks.GetBlockByAddress(rva);
-  if (block == NULL) {
-    LOG(ERROR) << "Unable to map " << rva << " to a block.";
-    return NULL;
-  }
-  if (block->type() != BlockGraph::CODE_BLOCK) {
-    LOG(ERROR) << rva << " maps to a non-code block (" << block->name()
-               << " in " << module_info->image_file_name << ").";
-    return NULL;
-  }
-
-  return block;
 }
 
 }  // namespace playback

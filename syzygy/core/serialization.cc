@@ -1,4 +1,4 @@
-// Copyright 2012 Google Inc.
+// Copyright 2011 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,29 +28,12 @@ bool FileOutStream::Write(size_t length, const Byte* bytes) {
   return fwrite(bytes, sizeof(Byte), length, file_) == length;
 }
 
-bool FileOutStream::Flush() {
-  ::fflush(file_);
-  return true;
-}
-
 FileInStream::FileInStream(FILE* file) : file_(file) {
   DCHECK(file != NULL);
 }
 
-bool FileInStream::ReadImpl(size_t length, Byte* bytes, size_t* bytes_read) {
-  DCHECK(bytes != NULL);
-  DCHECK(bytes_read != NULL);
-  *bytes_read = ::fread(bytes, sizeof(Byte), length, file_);
-
-  if (*bytes_read == length)
-    return true;
-
-  // If we didn't read the full number of bytes expected, figure out why. It's
-  // not an error if we're at the end of the stream.
-  if (!::feof(file_))
-    return false;
-
-  return true;
+bool FileInStream::Read(size_t length, Byte* bytes) {
+  return fread(bytes, sizeof(Byte), length, file_) == length;
 }
 
 // Serialization of base::Time.

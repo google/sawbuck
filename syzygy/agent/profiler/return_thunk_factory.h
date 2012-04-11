@@ -18,8 +18,8 @@
 #include "base/basictypes.h"
 #include "syzygy/trace/protocol/call_trace_defs.h"
 
-namespace agent {
-namespace profiler {
+namespace call_trace {
+namespace client {
 
 // A factory for return thunks as used by the profiler.  These are
 // packed as tight as possible into whole pages of memory.  All pages
@@ -69,15 +69,9 @@ class ReturnThunkFactory {
   // it on the stack, has been returned to.
   Thunk* MakeThunk(RetAddr real_ret);
 
-  // If @p ret is a thunk belonging to this factory, return that thunk,
-  // or NULL otherwise.
-  Thunk* CastToThunk(RetAddr ret);
-
-  // TODO(joi): Siggi's idea: To get natural alignment for the data yet
+  // TODO(joi): Siggi's idea:  To get natural alignment for the data yet
   // still have optimum packing, use parallel arrays within the same page
-  // for thunks vs. thunk data. This is also important for performance as
-  // writing to a cache line that contains code will cause an ICache flush
-  // for the cache line.
+  // for thunks vs. thunk data.
 #pragma pack(push, 1)
   struct Thunk {
     // NOTE: Do not add anything before the 'BYTE call' member below;
@@ -93,6 +87,7 @@ class ReturnThunkFactory {
     // percentage of identical instructions remain in the instruction cache.
     BYTE call;
     DWORD func_addr;
+    BYTE ret;
 
     // The caller and the function invoked.
     RetAddr caller;
@@ -139,7 +134,7 @@ class ReturnThunkFactory {
   DISALLOW_COPY_AND_ASSIGN(ReturnThunkFactory);
 };
 
-}  // namespace profiler
-}  // namespace agent
+}  // namespace client
+}  // namespace call_trace
 
 #endif  // SYZYGY_AGENT_PROFILER_RETURN_THUNK_FACTORY_H_

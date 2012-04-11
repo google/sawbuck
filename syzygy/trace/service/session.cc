@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// This file implements the trace::service::Session class, which manages
+// This file implements the call_trace::service::Session class, which manages
 // the trace file and buffers for a given client of the call trace service.
 
 #include "syzygy/trace/service/session.h"
@@ -21,22 +21,19 @@
 
 #include "base/command_line.h"
 #include "base/logging.h"
+#include "base/memory/scoped_ptr.h"
 #include "base/string_util.h"
 #include "base/stringprintf.h"
-#include "base/memory/scoped_ptr.h"
 #include "sawbuck/common/com_utils.h"
 #include "syzygy/common/align.h"
-#include "syzygy/common/buffer_writer.h"
-#include "syzygy/common/path_util.h"
 #include "syzygy/trace/protocol/call_trace_defs.h"
 #include "syzygy/trace/service/service.h"
 
-namespace trace {
-namespace service {
-
 namespace {
 
-using base::ProcessId;
+using call_trace::service::Buffer;
+using call_trace::service::ProcessID;
+using call_trace::service::ProcessInfo;
 
 FilePath GenerateTraceFileName(const FilePath& trace_directory,
                                const ProcessInfo& client) {
@@ -118,57 +115,40 @@ bool WriteTraceFileHeader(HANDLE file_handle,
   DCHECK(file_handle != INVALID_HANDLE_VALUE);
   DCHECK(block_size != 0);
 
-  // Make the initial buffer big enough to hold the header without the
-  // variable length blob, then skip past the fixed sized portion of the
-  // header.
-  std::vector<uint8> buffer;
-  buffer.reserve(16 * 1024);
-  common::VectorBufferWriter writer(&buffer);
-  if (!writer.Consume(offsetof(TraceFileHeader, blob_data)))
-    return false;
+  // Calculate the space required for the header page and allocate a
+  // buffer for it.
+  size_t header_len = sizeof(TraceFileHeader) + (client.command_line.length() *
+                                                 sizeof(wchar_t));
+  size_t buffer_size = common::AlignUp(header_len, block_size);
+  scoped_ptr_malloc<TraceFileHeader> header(
+      static_cast<TraceFileHeader*>(::calloc(1, buffer_size)));
 
-  // Populate the fixed sized portion of the header.
-  TraceFileHeader* header = reinterpret_cast<TraceFileHeader*>(&buffer[0]);
+  // Populate the header values.
   ::memcpy(&header->signature,
            &TraceFileHeader::kSignatureValue,
            sizeof(header->signature));
   header->server_version.lo = TRACE_VERSION_LO;
   header->server_version.hi = TRACE_VERSION_HI;
   header->timestamp = ::GetTickCount();
+  header->header_size = header_len;
   header->process_id = client.process_id;
+  header->command_line_len = client.command_line.length();
   header->block_size = block_size;
+  base::wcslcpy(&header->module_path[0],
+                client.executable_path.value().c_str(),
+                sizeof(header->module_path));
   header->module_base_address = client.exe_base_address;
   header->module_size = client.exe_image_size;
   header->module_checksum = client.exe_checksum;
   header->module_time_date_stamp = client.exe_time_date_stamp;
-  header->os_version_info = client.os_version_info;
-  header->system_info = client.system_info;
-  header->memory_status = client.memory_status;
-
-  // Make sure we record the path to the executable as a path with a drive
-  // letter, rather than using device names.
-  FilePath drive_path;
-  if (!common::ConvertDevicePathToDrivePath(client.executable_path,
-                                            &drive_path)) {
-    return false;
-  }
-
-  // Populate the blob with the variable length fields.
-  if (!writer.WriteString(drive_path.value()))
-    return false;
-  if (!writer.WriteString(client.command_line))
-    return false;
-  if (!writer.Write(client.environment.size(), &client.environment[0]))
-    return false;
-
-  // Update the final header size and align to a block size.
-  header->header_size = buffer.size();
-  writer.Align(header->block_size);
+  base::wcslcpy(&header->command_line[0],
+                client.command_line.c_str(),
+                client.command_line.length() + 1);
 
   // Commit the header page to disk.
   DWORD bytes_written = 0;
-  if (!::WriteFile(file_handle, &buffer[0], buffer.size(), &bytes_written,
-                   NULL) || bytes_written != buffer.size() ) {
+  if (!::WriteFile(file_handle, header.get(), buffer_size, &bytes_written,
+                   NULL) || bytes_written != buffer_size ) {
     DWORD error = ::GetLastError();
     LOG(ERROR) << "Failed writing trace file header: " << com::LogWe(error)
                << ".";
@@ -186,28 +166,21 @@ std::ostream& operator << (std::ostream& stream, const Buffer::ID buffer_id) {
 
 }  // namespace
 
+namespace call_trace {
+namespace service {
+
 Session::Session(Service* call_trace_service)
     : call_trace_service_(call_trace_service),
       is_closing_(false),
-      buffer_requests_waiting_for_recycle_(0),
-      buffer_is_available_(&lock_),
       input_error_already_logged_(false) {
   DCHECK(call_trace_service != NULL);
-  ::memset(buffer_state_counts_, 0, sizeof(buffer_state_counts_));
 }
 
 Session::~Session() {
-  // We expect all of the buffers to be available, and none of them to be
-  // outstanding.
-  DCHECK_EQ(buffers_available_.size(),
-            buffer_state_counts_[Buffer::kAvailable]);
-  DCHECK_EQ(buffers_.size(), buffer_state_counts_[Buffer::kAvailable]);
-  DCHECK_EQ(0u, buffer_state_counts_[Buffer::kInUse]);
-  DCHECK_EQ(0u, buffer_state_counts_[Buffer::kPendingWrite]);
+  DCHECK(buffers_in_use_.empty());
 
   // Not strictly necessary, but let's make sure nothing refers to the
   // client buffers before we delete the underlying memory.
-  buffers_.clear();
   buffers_available_.clear();
 
   // The session owns all of its shared memory buffers using raw pointers
@@ -220,11 +193,13 @@ Session::~Session() {
 }
 
 bool Session::Init(const FilePath& trace_directory,
-                   ProcessId client_process_id) {
+                   ProcessID client_process_id) {
   DCHECK(!trace_directory.empty());
 
-  if (!InitializeProcessInfo(client_process_id, &client_))
+  if (!client_.Initialize(client_process_id)) {
+    LOG(ERROR) << "Failed to initialize client info.";
     return false;
+  }
 
   trace_file_path_ = GenerateTraceFileName(trace_directory, client_);
 
@@ -247,46 +222,74 @@ bool Session::Init(const FilePath& trace_directory,
   return true;
 }
 
-bool Session::Close() {
-  std::vector<Buffer*> buffers;
+bool Session::Close(BufferQueue* flush_queue) {
+  DCHECK(flush_queue != NULL);
 
-  {
-    base::AutoLock lock(lock_);
+  // It's possible that the service is being stopped just after this session
+  // was marked for closure. The service would then attempt to re-close the
+  // session. Let's ignore these requests.
+  if (is_closing_)
+    return true;
 
-    // It's possible that the service is being stopped just after this session
-    // was marked for closure. The service would then attempt to re-close the
-    // session. Let's ignore these requests.
-    if (is_closing_)
-      return true;
+  // Otherwise the session is being asked to close for the first time.
+  is_closing_ = true;
 
-    // Otherwise the session is being asked to close for the first time.
-    is_closing_ = true;
+  // Create a process ended event. This causes at least one buffer to be in use
+  // to store the process ended event.
+  Buffer* buffer = NULL;
+  if (!CreateProcessEndedEvent(&buffer))
+    return false;
+  DCHECK(buffer != NULL);
+  DCHECK(!buffers_in_use_.empty());
 
-    // We'll reserve space for the the worst case scenario buffer count.
-    buffers.reserve(buffer_state_counts_[Buffer::kInUse] + 1);
+  // Schedule any outstanding buffers for flushing.
+  BufferMap::iterator iter = buffers_in_use_.begin();
+  for (; iter != buffers_in_use_.end(); ++iter) {
+    if (!iter->second->write_is_pending) {
+      iter->second->write_is_pending = true;
 
-    // Schedule any outstanding buffers for flushing.
-    BufferMap::iterator it = buffers_.begin();
-    for (; it != buffers_.end(); ++it) {
-      if (it->second->state == Buffer::kInUse) {
-        ChangeBufferState(Buffer::kPendingWrite, it->second);
-        buffers.push_back(it->second);
+      // If this is the process ended event buffer, don't schedule it yet.
+      // Save it for last.
+      if (iter->second != buffer) {
+        flush_queue->push_back(iter->second);
       }
     }
-
-    // Create a process ended event. This causes at least one buffer to be in
-    // use to store the process ended event.
-    Buffer* buffer = NULL;
-    if (!CreateProcessEndedEvent(&buffer))
-      return false;
-    DCHECK(buffer != NULL);
-    ChangeBufferState(Buffer::kPendingWrite, buffer);
-    buffers.push_back(buffer);
   }
 
-  if (!call_trace_service_->ScheduleBuffersForWriting(buffers)) {
-    LOG(ERROR) << "Unable to schedule outstanding buffers for writing.";
+  // Ensure that the TRACE_PROCESS_ENDED buffer is scheduled last so that it is
+  // the last buffer written to the trace file.
+  flush_queue->push_back(buffer);
+
+  return true;
+}
+
+bool Session::HasAvailableBuffers() const {
+  return !buffers_available_.empty();
+}
+
+bool Session::AllocateBuffers(size_t num_buffers, size_t buffer_size) {
+  // Allocate the record for the shared memory buffer.
+  scoped_ptr<BufferPool> pool(new BufferPool());
+  if (pool.get() == NULL) {
+    LOG(ERROR) << "Failed to allocate shared memory buffer.";
     return false;
+  }
+
+  // Initialize the shared buffer pool.
+  buffer_size = common::AlignUp(buffer_size, block_size());
+  if (!pool->Init(this, client_.process_handle, num_buffers,
+                  buffer_size)) {
+    LOG(ERROR) << "Failed to initialize shared memory buffer.";
+    return false;
+  }
+
+  // Save the shared memory block so that it's managed by the session.
+  shared_memory_buffers_.push_back(pool.get());
+  BufferPool* pool_ptr = pool.release();
+
+  // Put the client buffers into the list of available buffers.
+  for (Buffer* buf = pool_ptr->begin(); buf != pool_ptr->end(); ++buf) {
+    buffers_available_.push_back(buf);
   }
 
   return true;
@@ -297,12 +300,10 @@ bool Session::FindBuffer(CallTraceBuffer* call_trace_buffer,
   DCHECK(call_trace_buffer != NULL);
   DCHECK(client_buffer != NULL);
 
-  base::AutoLock lock(lock_);
-
   Buffer::ID buffer_id = Buffer::GetID(*call_trace_buffer);
 
-  BufferMap::iterator iter = buffers_.find(buffer_id);
-  if (iter == buffers_.end()) {
+  BufferMap::iterator iter = buffers_in_use_.find(buffer_id);
+  if (iter == buffers_in_use_.end()) {
     if (!input_error_already_logged_) {
       LOG(ERROR) << "Received call trace buffer not in use for this session "
                  << "[pid=" << client_.process_id << ", " << buffer_id << "].";
@@ -326,40 +327,13 @@ bool Session::FindBuffer(CallTraceBuffer* call_trace_buffer,
 
 bool Session::GetNextBuffer(Buffer** out_buffer) {
   DCHECK(out_buffer != NULL);
+  DCHECK(!buffers_available_.empty());
 
-  *out_buffer = NULL;
-  base::AutoLock lock(lock_);
+  Buffer* buffer = buffers_available_.front();
+  buffers_available_.pop_front();
+  buffers_in_use_[Buffer::GetID(*buffer)] = buffer;
 
-  // Once we're closing we should not hand out any more buffers.
-  if (is_closing_) {
-    LOG(ERROR) << "Session is closing but someone is trying to get a buffer.";
-    return false;
-  }
-
-  return GetNextBufferUnlocked(out_buffer);
-}
-
-bool Session::ReturnBuffer(Buffer* buffer) {
-  DCHECK(buffer != NULL);
-  DCHECK(buffer->session == this);
-
-  {
-    base::AutoLock lock(lock_);
-
-    // If we're in the middle of closing, we ignore any ReturnBuffer requests
-    // as we've already manually pushed them out for writing.
-    if (is_closing_)
-      return true;
-
-    ChangeBufferState(Buffer::kPendingWrite, buffer);
-  }
-
-  // Schedule it for writing.
-  if (!call_trace_service_->ScheduleBufferForWriting(buffer)) {
-    LOG(ERROR) << "Unable to schedule buffer for writing.";
-    return false;
-  }
-
+  *out_buffer = buffer;
   return true;
 }
 
@@ -367,213 +341,26 @@ bool Session::RecycleBuffer(Buffer* buffer) {
   DCHECK(buffer != NULL);
   DCHECK(buffer->session == this);
 
-  bool destroy_self = false;
-  {
-    base::AutoLock lock(lock_);
-
-    ChangeBufferState(Buffer::kAvailable, buffer);
-    buffers_available_.push_front(buffer);
-    buffer_is_available_.Signal();
-
-    // If the session is closing and all outstanding buffers have been recycled
-    // then it's safe to destroy this session.
-    if (is_closing_ && buffer_state_counts_[Buffer::kInUse] == 0 &&
-        buffer_state_counts_[Buffer::kPendingWrite] == 0) {
-      // If all buffers have been recycled, then all the buffers we own must be
-      // available. When we start closing we refuse to hand out further buffers
-      // so this must eventually happen, unless the write queue hangs.
-      DCHECK_EQ(buffers_.size(), buffer_state_counts_[Buffer::kAvailable]);
-      DCHECK_EQ(buffers_available_.size(),
-                buffer_state_counts_[Buffer::kAvailable]);
-      destroy_self = true;
-    }
+  Buffer::ID buffer_id = Buffer::GetID(*buffer);
+  if (buffers_in_use_.erase(buffer_id) == 0) {
+    LOG(ERROR) << "Buffer is not recorded as being in use ("
+               << buffer_id << ").";
+    return false;
   }
 
-  if (destroy_self) {
-    // This indirectly calls our destructor, so we can't have an AutoLock
-    // still referring to lock_.
+  buffers_available_.push_front(buffer);
+
+  // If the session is closing and all outstanding buffers have been recycled
+  // then it's safe to destroy this session.
+  if (is_closing_ && buffers_in_use_.empty()) {
     return call_trace_service_->DestroySession(this);
   }
 
   return true;
 }
 
-void Session::ChangeBufferState(BufferState new_state, Buffer* buffer) {
-  DCHECK(buffer != NULL);
-  DCHECK(buffer->session == this);
-  lock_.AssertAcquired();
-
-  BufferState old_state = buffer->state;
-
-  // Ensure the state transition is valid.
-  DCHECK_EQ(static_cast<int>(new_state),
-            (static_cast<int>(old_state) + 1) % Buffer::kBufferStateMax);
-
-  // Apply the state change.
-  buffer->state = new_state;
-  buffer_state_counts_[old_state]--;
-  buffer_state_counts_[new_state]++;
-}
-
-bool Session::InitializeProcessInfo(ProcessId process_id,
-                                    ProcessInfo* client) {
-  DCHECK(client != NULL);
-
-  if (!client->Initialize(process_id)) {
-    LOG(ERROR) << "Failed to initialize client info for PID=" << process_id
-               << ".";
-    return false;
-  }
-
-  return true;
-}
-
-bool Session::CopyBufferHandleToClient(HANDLE client_process_handle,
-                                       HANDLE local_handle,
-                                       HANDLE* client_copy) {
-  DCHECK(client_process_handle != NULL);
-  DCHECK(local_handle != NULL);
-  DCHECK(client_copy != NULL);
-
-  // Duplicate the mapping handle into the client process.
-  if (!::DuplicateHandle(::GetCurrentProcess(),
-                         local_handle,
-                         client_process_handle,
-                         client_copy,
-                         0,
-                         FALSE,
-                         DUPLICATE_SAME_ACCESS)) {
-    DWORD error = ::GetLastError();
-    LOG(ERROR) << "Failed to copy shared memory handle into client process: "
-               << com::LogWe(error) << ".";
-    return false;
-  }
-
-  return true;
-}
-
-bool Session::AllocateBuffers(size_t num_buffers, size_t buffer_size) {
-  DCHECK_GT(num_buffers, 0u);
-  DCHECK_GT(buffer_size, 0u);
-  lock_.AssertAcquired();
-
-  // Allocate the record for the shared memory buffer.
-  scoped_ptr<BufferPool> pool(new BufferPool());
-  if (pool.get() == NULL) {
-    LOG(ERROR) << "Failed to allocate shared memory buffer.";
-    return false;
-  }
-
-  // Initialize the shared buffer pool.
-  buffer_size = common::AlignUp(buffer_size, block_size());
-  if (!pool->Init(this, num_buffers, buffer_size)) {
-    LOG(ERROR) << "Failed to initialize shared memory buffer.";
-    return false;
-  }
-
-  // Copy the buffer pool handle to the client process.
-  HANDLE client_handle = NULL;
-  if (!CopyBufferHandleToClient(client_.process_handle.Get(),
-                                pool->handle(),
-                                &client_handle)) {
-    return false;
-  }
-  DCHECK(client_handle != NULL);
-  pool->SetClientHandle(client_handle);
-
-  // Save the shared memory block so that it's managed by the session.
-  shared_memory_buffers_.push_back(pool.get());
-  BufferPool* pool_ptr = pool.release();
-
-  // Put the client buffers into the list of available buffers and update
-  // the buffer state information.
-  for (Buffer* buf = pool_ptr->begin(); buf != pool_ptr->end(); ++buf) {
-    Buffer::ID buffer_id = Buffer::GetID(*buf);
-
-    buf->state = Buffer::kAvailable;
-    CHECK(buffers_.insert(std::make_pair(buffer_id, buf)).second);
-
-    buffer_state_counts_[Buffer::kAvailable]++;
-    buffers_available_.push_back(buf);
-    buffer_is_available_.Signal();
-  }
-
-  // Make sure we updated everything correctly.
-  DCHECK_EQ(buffer_state_counts_[Buffer::kAvailable] +
-                buffer_state_counts_[Buffer::kInUse] +
-                buffer_state_counts_[Buffer::kPendingWrite],
-            buffers_.size());
-  DCHECK_EQ(buffers_available_.size(),
-            buffer_state_counts_[Buffer::kAvailable]);
-
-  return true;
-}
-
-bool Session::GetNextBufferUnlocked(Buffer** out_buffer) {
-  DCHECK(out_buffer != NULL);
-  lock_.AssertAcquired();
-
-  *out_buffer = NULL;
-
-  // If we have too many pending writes, let's wait until one of those has
-  // been completed and recycle that buffer. This provides some back-pressure
-  // on our allocation mechanism.
-  //
-  // Note that this back-pressure maximum simply reduces the amount of
-  // memory that will be used in common scenarios. It is still possible to
-  // have unbounded memory growth in two ways:
-  //
-  // (1) Having an unbounded number of processes, and hence sessions. Each
-  //     session creates an initial pool of buffers for itself.
-  //
-  // (2) Having an unbounded number of threads with outstanding (partially
-  //     filled and not returned for writing) buffers. The lack of buffers
-  //     pending writes will force further allocations as new threads come
-  //     looking for buffers.
-  //
-  // We have to be careful that we don't pile up arbitrary many threads waiting
-  // for a finite number of buffers that will be recycled. Hence, we count the
-  // number of requests applying back-pressure.
-  while (buffers_available_.empty()) {
-    // Figure out how many buffers we can force to be recycled according to our
-    // threshold and the number of write-pending buffers.
-    size_t buffers_force_recyclable = 0;
-    if (buffer_state_counts_[Buffer::kPendingWrite] >
-        call_trace_service_->max_buffers_pending_write()) {
-      buffers_force_recyclable = buffer_state_counts_[Buffer::kPendingWrite] -
-          call_trace_service_->max_buffers_pending_write();
-    }
-
-    // If there's still room to do so, wait rather than allocating immediately.
-    // This will either force us to wait until a buffer has been written and
-    // recycled, or if the request volume is high enough we'll likely be
-    // satisfied by an allocation.
-    if (buffer_requests_waiting_for_recycle_ < buffers_force_recyclable) {
-      ++buffer_requests_waiting_for_recycle_;
-      OnWaitingForBufferToBeRecycled();  // Unittest hook.
-      buffer_is_available_.Wait();
-      --buffer_requests_waiting_for_recycle_;
-    } else {
-      // Otherwise, force an allocation.
-      if (!AllocateBuffers(call_trace_service_->num_incremental_buffers(),
-                           call_trace_service_->buffer_size_in_bytes())) {
-        return false;
-      }
-    }
-  }
-  DCHECK(!buffers_available_.empty());
-
-  Buffer* buffer = buffers_available_.front();
-  buffers_available_.pop_front();
-  ChangeBufferState(Buffer::kInUse, buffer);
-
-  *out_buffer = buffer;
-  return true;
-}
-
 bool Session::CreateProcessEndedEvent(Buffer** buffer) {
   DCHECK(buffer != NULL);
-  lock_.AssertAcquired();
 
   *buffer = NULL;
 
@@ -592,16 +379,13 @@ bool Session::CreateProcessEndedEvent(Buffer** buffer) {
       sizeof(TraceFileSegmentHeader) + sizeof(RecordPrefix);
 
   // Ensure that a free buffer exists.
-  if (buffers_available_.empty()) {
-    if (!AllocateBuffers(1, kBufferSize)) {
-      LOG(ERROR) << "Unable to allocate buffer for process ended event.";
-      return false;
-    }
+  if (!HasAvailableBuffers() && !AllocateBuffers(1, kBufferSize)) {
+    LOG(ERROR) << "Unable to allocate buffer for process ended event.";
+    return false;
   }
-  DCHECK(!buffers_available_.empty());
 
   // Get a buffer for the event.
-  if (!GetNextBufferUnlocked(buffer) || *buffer == NULL) {
+  if (!GetNextBuffer(buffer) || *buffer == NULL) {
     LOG(ERROR) << "Unable to get a buffer for process ended event.";
     return false;
   }
@@ -641,5 +425,5 @@ bool Session::CreateProcessEndedEvent(Buffer** buffer) {
   return true;
 }
 
-}  // namespace trace::service
-}  // namespace trace
+}  // namespace call_trace::service
+}  // namespace call_trace

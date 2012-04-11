@@ -16,26 +16,23 @@
 
 #include "syzygy/agent/call_trace/client_rpc.h"
 
-#include <windows.h>  // NOLINT
+#include <windows.h>
 #include <psapi.h>
 #include <tlhelp32.h>
 #include <vector>
 
 #include "base/at_exit.h"
 #include "base/command_line.h"
-#include "base/environment.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
-#include "base/utf_string_conversions.h"
+#include "base/logging_win.h"
 #include "base/win/pe_image.h"
 #include "sawbuck/common/com_utils.h"
-#include "syzygy/common/logging.h"
-#include "syzygy/common/path_util.h"
 #include "syzygy/trace/client/client_utils.h"
 #include "syzygy/trace/protocol/call_trace_defs.h"
 #include "syzygy/trace/rpc/rpc_helpers.h"
 
-using agent::client::Client;
+using call_trace::client::Client;
 
 namespace {
 
@@ -228,7 +225,7 @@ void __declspec(naked) pexit_dllmain() {
   }
 }
 
-namespace agent {
+namespace call_trace {
 namespace client {
 
 class Client::ThreadLocalData {
@@ -250,7 +247,7 @@ class Client::ThreadLocalData {
   Client* const client;
 
   // The owning thread's current trace-file segment, if any.
-  trace::client::TraceFileSegment segment;
+  TraceFileSegment segment;
 
   // The current batch record we're extending, if any.
   // This will point into the associated trace file segment's buffer.
@@ -265,10 +262,13 @@ class Client::ThreadLocalData {
   ModuleEventStack module_event_stack;
 };
 
-Client::Client() {
+Client::Client()
+    : tls_index_(::TlsAlloc()) {
 }
 
 Client::~Client() {
+  if (TLS_OUT_OF_INDEXES != tls_index_)
+    ::TlsFree(tls_index_);
 }
 
 Client* Client::Instance() {
@@ -280,11 +280,6 @@ BOOL Client::DllMain(HMODULE /* module */,
                      LPVOID /* reserved */) {
   switch (reason) {
     case DLL_PROCESS_ATTACH:
-      // Initialize logging ASAP.
-      CommandLine::Init(0, NULL);
-      common::InitLoggingForDll(L"call_trace");
-      break;
-
     case DLL_THREAD_ATTACH:
       // Session creation and thread-local data allocation are performed
       // just-in-time when the first instrumented entry point is invoked.
@@ -420,8 +415,8 @@ void Client::LogEvent_ModuleEvent(ThreadLocalData *data,
 
   // Allocate a record in the log.
   TraceModuleData* module_event = reinterpret_cast<TraceModuleData*>(
-      data->segment.AllocateTraceRecordImpl(
-          trace::client::ReasonToEventType(reason), sizeof(TraceModuleData)));
+      data->segment.AllocateTraceRecordImpl(ReasonToEventType(reason),
+                                            sizeof(TraceModuleData)));
   DCHECK(module_event!= NULL);
 
   // Populate the log record.
@@ -431,23 +426,12 @@ void Client::LogEvent_ModuleEvent(ThreadLocalData *data,
   module_event->module_checksum = image.GetNTHeaders()->OptionalHeader.CheckSum;
   module_event->module_time_date_stamp =
       image.GetNTHeaders()->FileHeader.TimeDateStamp;
-
-  // Get the module name, and be sure to convert it to a path with a drive
-  // letter rather than a device name.
-  wchar_t module_name[MAX_PATH] = { 0 };
   if (::GetMappedFileName(::GetCurrentProcess(), module,
-                          module_name, arraysize(module_name)) == 0) {
-    DWORD error = ::GetLastError();
-    LOG(ERROR) << "Failed to get module name: " << com::LogWe(error) << ".";
+                          &module_event->module_name[0],
+                          arraysize(module_event->module_name)) == 0) {
+      DWORD error = ::GetLastError();
+      LOG(ERROR) << "Failed to get module name: " << com::LogWe(error) << ".";
   }
-  FilePath device_path(module_name);
-  FilePath drive_path;
-  if (!common::ConvertDevicePathToDrivePath(device_path, &drive_path)) {
-    LOG(ERROR) << "ConvertDevicePathToDrivePath failed.";
-  }
-  ::wcsncpy(module_event->module_name, drive_path.value().c_str(),
-            arraysize(module_event->module_name));
-
   // TODO(rogerm): get rid of the module_exe field of TraceModuleData?
 #ifdef NDEBUG
   module_event->module_exe[0] = L'\0';
@@ -485,18 +469,13 @@ void Client::LogEvent_FunctionEntry(EntryFrame *entry_frame,
   ThreadLocalData *data = GetOrAllocateThreadData();
   CHECK(data != NULL) << "Failed to get call trace thread context.";
 
-  if (!session_.IsTracing() && !session_.IsDisabled()) {
+  if (!session_.IsTracing()) {
     base::AutoLock scoped_lock(init_lock_);
     if (session_.IsDisabled())
       return;
 
-    if (!session_.IsTracing()) {
-      scoped_ptr<base::Environment> env(base::Environment::Create());
-      std::string id;
-      env->GetVar(::kSyzygyRpcInstanceIdEnvVar, &id);
-      session_.set_instance_id(UTF8ToWide(id));
-      if (!session_.CreateSession(&data->segment))
-        return;
+    if (!session_.IsTracing() && !session_.CreateSession(&data->segment)) {
+      return;
     }
   }
 
@@ -636,11 +615,18 @@ void Client::FixupBackTrace(const ShadowStack& stack, RetAddr traces[],
 }
 
 Client::ThreadLocalData* Client::GetThreadData() {
-  return tls_.Get();
+  if (TLS_OUT_OF_INDEXES == tls_index_)
+    return NULL;
+
+  return reinterpret_cast<ThreadLocalData*>(::TlsGetValue(tls_index_));
 }
 
 Client::ThreadLocalData* Client::GetOrAllocateThreadData() {
-  ThreadLocalData *data = tls_.Get();
+  if (TLS_OUT_OF_INDEXES == tls_index_)
+    return NULL;
+
+  ThreadLocalData *data=
+      reinterpret_cast<ThreadLocalData*>(::TlsGetValue(tls_index_));
   if (data != NULL)
     return data;
 
@@ -650,7 +636,13 @@ Client::ThreadLocalData* Client::GetOrAllocateThreadData() {
     return NULL;
   }
 
-  tls_.Set(data);
+  if (!::TlsSetValue(tls_index_, data)) {
+    LOG(ERROR) << "Unable to set per-thread data";
+
+    delete data;
+    return NULL;
+  }
+
   return data;
 }
 
@@ -658,7 +650,7 @@ void Client::FreeThreadData(ThreadLocalData *data) {
   DCHECK(data != NULL);
 
   delete data;
-  tls_.Set(NULL);
+  ::TlsSetValue(tls_index_, NULL);
 }
 
 void Client::FreeThreadData() {
@@ -692,7 +684,7 @@ FuncCall* Client::ThreadLocalData::AllocateFuncCall() {
     segment.header->segment_length += sizeof(FuncCall);
 
     // Extend the record enclosure.
-    RecordPrefix* prefix = trace::client::GetRecordPrefix(batch);
+    RecordPrefix* prefix = GetRecordPrefix(batch);
     prefix->size += sizeof(FuncCall);
 
     // And lastly update the inner counter.
@@ -723,5 +715,5 @@ bool Client::ThreadLocalData::FlushSegment() {
   return client->session_.ExchangeBuffer(&segment);
 }
 
-}  // namespace agent::client
-}  // namespace agent
+}  // namespace call_trace::client
+}  // namespace call_trace

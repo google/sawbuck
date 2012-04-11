@@ -1,4 +1,4 @@
-// Copyright 2012 Google Inc.
+// Copyright 2011 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ namespace pdb {
 class PdbByteStream : public PdbStream {
  public:
   PdbByteStream();
+  ~PdbByteStream();
 
   // Initializes the stream from the contents of a byte array.
   bool Init(const uint8* data, size_t length);
@@ -37,10 +38,7 @@ class PdbByteStream : public PdbStream {
   // Gets the stream's data pointer.
   uint8* data() { return data_.get(); }
 
- protected:
-  // This is protected to enforce use of reference counted pointers.
-  virtual ~PdbByteStream();
-
+ private:
   // The stream's data.
   scoped_array<uint8> data_;
 

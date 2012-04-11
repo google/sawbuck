@@ -44,7 +44,7 @@ class TracerModule: public base::win::EtwTraceProvider {
   BOOL WINAPI DllMain(DWORD reason, LPVOID reserved);
 
  protected:
-  typedef agent::EntryFrame EntryFrame;
+  typedef call_trace::EntryFrame EntryFrame;
   friend void _penter();
   friend void pexit();
   friend bool wait_til_enabled();
@@ -90,12 +90,12 @@ class TracerModule: public base::win::EtwTraceProvider {
                       const TraceEnterExitEventData& data);
   void TraceBatchEnter(FuncAddr function);
 
-  struct StackEntry : public agent::StackEntryBase {
+  struct StackEntry : public call_trace::StackEntryBase {
     // The function address invoked, from which this stack entry returns.
     FuncAddr function_address;
   };
 
-  typedef agent::ShadowStackImpl<StackEntry> ShadowStack;
+  typedef call_trace::ShadowStackImpl<StackEntry> ShadowStack;
 
   // The number of trace entries we log in a batch. There is a maximal
   // event size which appears to be inclusive of the trace header and

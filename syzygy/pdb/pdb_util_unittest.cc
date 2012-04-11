@@ -1,4 +1,4 @@
-// Copyright 2012 Google Inc.
+// Copyright 2011 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,11 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "syzygy/pdb/pdb_util.h"
 
 #include <objbase.h>
-
 #include "base/path_service.h"
 #include "base/scoped_native_library.h"
 #include "base/win/pe_image.h"
@@ -23,12 +21,18 @@
 #include "syzygy/core/unittest_util.h"
 #include "syzygy/pdb/pdb_byte_stream.h"
 #include "syzygy/pdb/pdb_reader.h"
-#include "syzygy/pdb/unittest_util.h"
 #include "syzygy/pe/pe_data.h"
 
-namespace pdb {
-
 namespace {
+
+const wchar_t* kTestPdbFilePath =
+    L"syzygy\\pdb\\test_data\\test_dll.pdb";
+
+const wchar_t* kTestDllFilePath =
+    L"syzygy\\pdb\\test_data\\test_dll.dll";
+
+const wchar_t* kOmappedTestPdbFilePath =
+    L"syzygy\\pdb\\test_data\\omapped_test_dll.pdb";
 
 const wchar_t* kTempPdbFileName = L"temp.pdb";
 const wchar_t* kTempPdbFileName2 = L"temp2.pdb";
@@ -105,15 +109,16 @@ class PdbUtilTest : public testing::Test {
 
 }  // namespace
 
+namespace pdb {
+
 TEST_F(PdbUtilTest, GetDbiDbgHeaderOffsetTestDll) {
   // Test the test_dll.pdb doesn't have Omap information.
   PdbReader reader;
-  PdbFile pdb_file;
-  EXPECT_TRUE(reader.Read(
-      testing::GetSrcRelativePath(testing::kTestPdbFilePath),
-      &pdb_file));
+  std::vector<PdbStream*> streams;
+  EXPECT_TRUE(reader.Read(testing::GetSrcRelativePath(kTestPdbFilePath),
+                          &streams));
 
-  PdbStream* dbi_stream = pdb_file.GetStream(kDbiStream);
+  PdbStream* dbi_stream = streams[kDbiStream];
   DbiHeader dbi_header;
   EXPECT_TRUE(dbi_stream->Read(&dbi_header, 1));
 
@@ -131,12 +136,11 @@ TEST_F(PdbUtilTest, GetDbiDbgHeaderOffsetTestDll) {
 TEST_F(PdbUtilTest, GetDbiDbgHeaderOffsetOmappedTestDll) {
   // Test that omapped_test_dll.pdb does have Omap information.
   PdbReader reader;
-  PdbFile pdb_file;
-  EXPECT_TRUE(reader.Read(
-      testing::GetSrcRelativePath(testing::kOmappedTestPdbFilePath),
-      &pdb_file));
+  std::vector<PdbStream*> streams;
+  EXPECT_TRUE(reader.Read(testing::GetSrcRelativePath(kOmappedTestPdbFilePath),
+                          &streams));
 
-  PdbStream* dbi_stream = pdb_file.GetStream(kDbiStream);
+  PdbStream* dbi_stream = streams[kDbiStream];
   DbiHeader dbi_header;
   EXPECT_TRUE(dbi_stream->Read(&dbi_header, 1));
 
@@ -153,8 +157,7 @@ TEST_F(PdbUtilTest, GetDbiDbgHeaderOffsetOmappedTestDll) {
 
 TEST_F(PdbUtilTest, TestDllHasNoOmap) {
   // Test that test_dll.pdb has no Omap information.
-  FilePath test_pdb_file_path = testing::GetSrcRelativePath(
-      testing::kTestPdbFilePath);
+  FilePath test_pdb_file_path = testing::GetSrcRelativePath(kTestPdbFilePath);
   DWORD64 base_address =
       ::SymLoadModuleExW(process_,
                          NULL,
@@ -199,8 +202,7 @@ TEST_F(PdbUtilTest, AddOmapStreamToPdbFile) {
   std::vector<OMAP> omap_from_list(omap_from_data,
                                    omap_from_data + arraysize(omap_from_data));
 
-  FilePath test_pdb_file_path = testing::GetSrcRelativePath(
-      testing::kTestPdbFilePath);
+  FilePath test_pdb_file_path = testing::GetSrcRelativePath(kTestPdbFilePath);
   EXPECT_TRUE(AddOmapStreamToPdbFile(test_pdb_file_path,
                                      temp_pdb_file_path_,
                                      new_guid_,
@@ -231,8 +233,7 @@ TEST_F(PdbUtilTest, AddOmapStreamToPdbFileWithOmap) {
   std::vector<OMAP> omap_from_list(omap_from_data,
                                    omap_from_data + arraysize(omap_from_data));
 
-  FilePath test_pdb_file_path = testing::GetSrcRelativePath(
-      testing::kTestPdbFilePath);
+  FilePath test_pdb_file_path = testing::GetSrcRelativePath(kTestPdbFilePath);
   // Write Omap to and from in the opposite order to temp.pdb.
   EXPECT_TRUE(AddOmapStreamToPdbFile(test_pdb_file_path,
                                      temp_pdb_file_path_,
@@ -253,30 +254,27 @@ TEST_F(PdbUtilTest, AddOmapStreamToPdbFileWithOmap) {
 
   // Make sure temp.pdb and temp2.pdb have the same number of streams.
   PdbReader reader;
-  PdbFile pdb_file1, pdb_file2;
-  EXPECT_TRUE(reader.Read(temp_pdb_file_path_, &pdb_file1));
-  EXPECT_TRUE(reader.Read(temp_pdb_file_path2_, &pdb_file2));
-  EXPECT_EQ(pdb_file1.StreamCount(), pdb_file2.StreamCount());
+  std::vector<PdbStream*> streams, streams2;
+  EXPECT_TRUE(reader.Read(temp_pdb_file_path_, &streams));
+  EXPECT_TRUE(reader.Read(temp_pdb_file_path2_, &streams2));
+  EXPECT_EQ(streams.size(), streams2.size());
 }
 
 TEST_F(PdbUtilTest, PdbHeaderMatchesImageDebugDirectory) {
   PdbReader reader;
-  PdbFile pdb_file;
-  EXPECT_TRUE(reader.Read(
-      testing::GetSrcRelativePath(testing::kTestPdbFilePath),
-      &pdb_file));
+  std::vector<PdbStream*> streams;
+  EXPECT_TRUE(reader.Read(testing::GetSrcRelativePath(kTestPdbFilePath),
+                          &streams));
 
   PdbInfoHeader70 header = { 0 };
-  ASSERT_GE(pdb_file.StreamCount(), kPdbHeaderInfoStream);
-  ASSERT_TRUE(pdb_file.GetStream(kPdbHeaderInfoStream) != NULL);
-  EXPECT_TRUE(pdb_file.GetStream(kPdbHeaderInfoStream)->Read(&header, 1));
+  ASSERT_GE(streams.size(), kPdbHeaderInfoStream);
+  EXPECT_TRUE(streams[kPdbHeaderInfoStream]->Read(&header, 1));
   EXPECT_EQ(header.version, kPdbCurrentVersion);
 
   std::string error;
   base::NativeLibrary test_dll =
-      base::LoadNativeLibrary(
-          testing::GetSrcRelativePath(testing::kTestDllFilePath),
-          &error);
+      base::LoadNativeLibrary(testing::GetSrcRelativePath(kTestDllFilePath),
+                              &error);
   ASSERT_TRUE(test_dll != NULL);
 
   // Make sure the DLL is unloaded on exit.
@@ -305,8 +303,7 @@ TEST_F(PdbUtilTest, PdbHeaderMatchesImageDebugDirectory) {
 }
 
 TEST_F(PdbUtilTest, ReadPdbHeader) {
-  const FilePath pdb_path = testing::GetSrcRelativePath(
-      testing::kTestPdbFilePath);
+  const FilePath pdb_path = testing::GetSrcRelativePath(kTestPdbFilePath);
   PdbInfoHeader70 pdb_header;
   EXPECT_TRUE(ReadPdbHeader(pdb_path, &pdb_header));
 }

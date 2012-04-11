@@ -18,10 +18,9 @@
 #include <windows.h>
 #include <wmistr.h>
 #include <evntrace.h>  // NOLINT - wmistr must precede envtrace.h
-#include <vector>
 
 #include "base/basictypes.h"
-#include "base/string_piece.h"
+#include "base/logging.h"
 
 // ID for the call trace provider.
 extern const GUID kCallTraceProvider;
@@ -49,17 +48,13 @@ extern const int kDefaultEtwTraceFlags;
 extern const int kDefaultEtwKernelFlags;
 
 // RPC protocol and endpoint.
-extern const char* const kSyzygyRpcInstanceIdEnvVar;
-void GetSyzygyCallTraceRpcProtocol(std::wstring* protocol);
-void GetSyzygyCallTraceRpcEndpoint(const base::StringPiece16& id,
-                                   std::wstring* endpoint);
-void GetSyzygyCallTraceRpcMutexName(const base::StringPiece16& id,
-                                    std::wstring* mutex_name);
+extern const wchar_t* const kCallTraceRpcProtocol;
+extern const wchar_t* const kCallTraceRpcEndpoint;
+extern const wchar_t* const kCallTraceRpcMutex;
 
-// This must be bumped anytime the file format is changed.
 enum {
   TRACE_VERSION_HI = 1,
-  TRACE_VERSION_LO = 2,
+  TRACE_VERSION_LO = 0,
 };
 
 enum TraceEventType {
@@ -76,7 +71,7 @@ enum TraceEventType {
   TRACE_THREAD_DETACH_EVENT,
   TRACE_MODULE_EVENT,
   TRACE_BATCH_ENTER,
-  TRACE_BATCH_INVOCATION,
+  TRACE_INVOCATION_BATCH,
 };
 
 // All traces are emitted at this trace level.
@@ -131,16 +126,8 @@ struct RecordPrefix {
 
 COMPILE_ASSERT(sizeof(RecordPrefix) == 12, record_prefix_size_is_12);
 
-// This structure is written at the beginning of a call trace file. If the
-// format of this trace file changes the server version must be increased.
+// This structure is written at the beginning of a call trace file.
 struct TraceFileHeader {
-  // Everything in this header up to and including the header_size field should
-  // not be changed in order, layout or alignment. This allows the beginning of
-  // the header to be read across all trace file versions. If adding a new
-  // fixed length field, do so immediately prior to blob_data. If adding a new
-  // variable length field, append it to blob data updating the comment below,
-  // and both the reading and writing of TraceFileHeader.
-
   // The "magic-number" identifying this as a Syzygy call-trace file.
   // In a valid trace file this will be "SZGY".
   typedef char Signature[4];
@@ -158,7 +145,8 @@ struct TraceFileHeader {
   } server_version;
 
   // The number of bytes in the header. This is the size of this structure
-  // plus the length of the blob.
+  // plus the length of the command line string (the trailing NUL is already
+  // accounted for in the size of this structure).
   uint32 header_size;
 
   // The block size used when writing the file to disk. The header and
@@ -184,28 +172,15 @@ struct TraceFileHeader {
   // The timestamp of the executable module.
   uint32 module_time_date_stamp;
 
-  // System information.
-  OSVERSIONINFOEX os_version_info;
-  SYSTEM_INFO system_info;
-  MEMORYSTATUSEX memory_status;
+  // The path to the executable module.
+  wchar_t module_path[MAX_PATH];
 
-  // The header is required to store multiple variable length fields. We do
-  // this via a blob mechanism. The header contains a single binary blob at the
-  // end, whose length in bytes) is encoded via blob_length.
-  //
-  // Currently, the header stores the following variable length fields (in
-  // the order indicated):
-  //
-  //   1. The path to the instrumented module, a NULL terminated wide string.
-  //   2. The command line for the process, a NULL terminated wide string.
-  //   3. The environment string for the process, an array of wide chars
-  //      terminated by a double NULL (individual environment variables are
-  //      separated by single NULLs).
+  // The number of characters in the command line (not including the trailing
+  // NUL character).
+  uint32 command_line_len;
 
-  // This stores the variable length data, concatenated. This should be pointer
-  // aligned so that PODs with alignment constraints embedded in the blob can be
-  // read directly from a header loaded into memory.
-  uint8 blob_data[1];
+  // The command line used to start the traced process.
+  wchar_t command_line[1];
 };
 
 // Written at the beginning of a call trace file segment. Each call trace file
@@ -258,21 +233,6 @@ struct TraceModuleData {
   wchar_t module_exe[MAX_PATH];
 };
 
-// This is for storing environment string information. Each environment string
-// consists of a pair of strings, the key and the value. Certain special
-// strings have empty keys.
-typedef std::vector<std::pair<std::wstring, std::wstring>>
-    TraceEnvironmentStrings;
-
-// Describes the system information and environment in which a process is
-// running.
-struct TraceSystemInfo {
-  OSVERSIONINFOEX os_version_info;
-  SYSTEM_INFO system_info;
-  MEMORYSTATUSEX memory_status;
-  TraceEnvironmentStrings environment_strings;
-};
-
 struct FuncCall {
   union {
     DWORD tick_count;
@@ -308,8 +268,8 @@ struct InvocationInfo {
   uint64 cycles_sum;
 };
 
-struct TraceBatchInvocationInfo {
-  enum { kTypeId = TRACE_BATCH_INVOCATION };
+struct InvocationInfoBatch {
+  enum { kTypeId = TRACE_INVOCATION_BATCH };
 
   // TODO(siggi): Perhaps the batch should carry the time resolution for
   //    the invocation data?

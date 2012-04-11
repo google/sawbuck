@@ -42,13 +42,19 @@ class ChromeProfileRunner(runner.ChromeRunner):
     self._output_dir = output_dir
     self._log_files = []
 
-  def _PreIteration(self, it):
-    super(ChromeProfileRunner, self)._PreIteration(it)
+  def _SetUp(self):
+    super(ChromeProfileRunner, self)._SetUp()
     self.StartLoggingRpc(self._output_dir)
 
-  def _PostIteration(self, it, success):
+  def _TearDown(self):
     self.StopLoggingRpc()
-    super(ChromeProfileRunner, self)._PostIteration(it, success)
+    super(ChromeProfileRunner, self)._TearDown()
+
+  def _PreIteration(self, it):
+    pass
+
+  def _PostIteration(self, it, success):
+    pass
 
   def _DoIteration(self, it):
     # Give Chrome some time to settle.
@@ -68,13 +74,19 @@ class ChromeFrameProfileRunner(runner.ChromeFrameRunner):
     self._output_dir = output_dir
     self._log_files = []
 
-  def _PreIteration(self, it):
-    super(ChromeFrameProfileRunner, self)._PreIteration(it)
+  def _SetUp(self):
+    super(ChromeFrameProfileRunner, self)._SetUp()
     self.StartLoggingRpc(self._output_dir)
 
-  def _PostIteration(self, it, success):
+  def _TearDown(self):
     self.StopLoggingRpc()
-    super(ChromeFrameProfileRunner, self)._PostIteration(it, success)
+    super(ChromeFrameProfileRunner, self)._TearDown()
+
+  def _PreIteration(self, it):
+    pass
+
+  def _PostIteration(self, it, success):
+    pass
 
   def _DoIteration(self, it):
     # Give Chrome Frame slightly longer to settle.
@@ -86,8 +98,7 @@ class ChromeFrameProfileRunner(runner.ChromeFrameRunner):
 
 
 def ProfileChrome(chrome_dir, output_dir, iterations, chrome_frame,
-                  startup_type=runner.DEFAULT_STARTUP_TYPE,
-                  startup_urls=None):
+                  session_urls=None):
   """Profiles the chrome instance in chrome_dir for a specified number
   of iterations. If chrome_frame is specified, also profiles Chrome Frame for
   the same number of iterations.
@@ -108,7 +119,9 @@ def ProfileChrome(chrome_dir, output_dir, iterations, chrome_frame,
   _LOGGER.info('Profiling Chrome "%s\chrome.exe".', chrome_dir)
   chrome_runner = ChromeProfileRunner(chrome_dir, output_dir,
                                       initialize_profile=True)
-  chrome_runner.ConfigureStartup(startup_type, startup_urls)
+  for url in session_urls or []:
+    chrome_runner.AddToSession(url)
+
   chrome_runner.Run(iterations)
 
   log_files = chrome_runner._log_files
@@ -147,15 +160,6 @@ def _ParseArguments():
                           'executables are to be found.'))
   parser.add_option('--output-dir', dest='output_dir',
                     help='The output directory for the call trace files.')
-  parser.add_option('--startup-type', dest='startup_type', metavar='TYPE',
-                    choices=runner.ALL_STARTUP_TYPES,
-                    default=runner.DEFAULT_STARTUP_TYPE,
-                    help='The type of Chrome session to open on startup')
-  parser.add_option('--startup-url', dest='startup_urls', metavar='URL',
-                    default=[], action='append',
-                    help='Add URL to the startup scenario used for profiling. '
-                         'This option may be given multiple times; each URL '
-                         'will be added to the startup scenario.')
   (opts, args) = parser.parse_args()
 
   if len(args):
@@ -185,9 +189,7 @@ def main():
     trace_files = ProfileChrome(opts.input_dir,
                                 opts.output_dir,
                                 opts.iterations,
-                                opts.chrome_frame,
-                                opts.startup_type,
-                                opts.startup_urls)
+                                opts.chrome_frame)
   except Exception:
     _LOGGER.exception('Profiling failed.')
     return 1

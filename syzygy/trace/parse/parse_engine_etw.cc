@@ -21,7 +21,7 @@
 #include "sawbuck/common/buffer_parser.h"
 #include "sawbuck/common/com_utils.h"
 
-namespace trace {
+namespace call_trace {
 namespace parser {
 
 ParseEngineEtw* ParseEngineEtw::parse_engine_etw_ = NULL;
@@ -204,5 +204,5 @@ bool ParseEngineEtw::ProcessBuffer(PEVENT_TRACE_LOGFILE buffer) {
   return (!parse_engine_etw_->error_occurred_);
 }
 
-}  // namespace trace::parser
-}  // namespace trace
+}  // namespace call_trace::parser
+}  // namespace call_trace

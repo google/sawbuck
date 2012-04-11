@@ -47,9 +47,9 @@ typedef uint64 Size64;
 
 // This class can consume a set of call-trace logs captured for a PE image
 // while driving an OrderGenerator instance to produce an ordering file.
-class Reorderer : public trace::parser::ParseEventHandler {
+class Reorderer : public call_trace::parser::ParseEventHandler {
  public:
-  typedef trace::parser::Parser Parser;
+  typedef call_trace::parser::Parser Parser;
   typedef pe::ImageLayout ImageLayout;
   typedef pe::PEFile PEFile;
   typedef std::vector<FilePath> TraceFileList;
@@ -102,10 +102,10 @@ class Reorderer : public trace::parser::ParseEventHandler {
 
  protected:
   typedef block_graph::BlockGraph BlockGraph;
+  typedef call_trace::parser::ModuleInformation ModuleInformation;
   typedef core::RelativeAddress RelativeAddress;
   typedef playback::Playback Playback;
   typedef std::set<uint32> ProcessSet;
-  typedef trace::parser::ModuleInformation ModuleInformation;
   typedef TraceFileList::iterator TraceFileIter;
 
   // The implementation of Reorder.
@@ -116,9 +116,7 @@ class Reorderer : public trace::parser::ParseEventHandler {
 
   // @name ParseEventHandler Implementation
   // @{
-  virtual void OnProcessStarted(base::Time time,
-                                DWORD process_id,
-                                const TraceSystemInfo* data) OVERRIDE;
+  virtual void OnProcessStarted(base::Time time, DWORD process_id) OVERRIDE;
   virtual void OnProcessEnded(base::Time time, DWORD process_id) OVERRIDE;
   virtual void OnFunctionEntry(base::Time time,
                                DWORD process_id,
@@ -152,7 +150,7 @@ class Reorderer : public trace::parser::ParseEventHandler {
                                  DWORD process_id,
                                  DWORD thread_id,
                                  size_t num_batches,
-                                 const TraceBatchInvocationInfo* data) OVERRIDE;
+                                 const InvocationInfoBatch* data) OVERRIDE;
   // @}
 
   // A playback, which will decompose the image for us.

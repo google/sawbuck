@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// This file declares the trace::service::Service class which implements
+// This file declares the call_trace::service::Service class which implements
 // the call trace service RPC interface.
 
 #ifndef SYZYGY_TRACE_SERVICE_SERVICE_H_
@@ -22,20 +22,17 @@
 
 #include "base/basictypes.h"
 #include "base/file_path.h"
-#include "base/process.h"
-#include "base/string_piece.h"
 #include "base/synchronization/condition_variable.h"
 #include "base/threading/platform_thread.h"
-#include "base/threading/thread.h"
 #include "syzygy/trace/service/session.h"
 
-namespace trace {
+namespace call_trace {
 namespace service {
 
 // Implements the CallTraceService interface (see "call_trace_rpc.idl".
 // For the most basic usage:
 //
-//   trace::service::Service::Instance().Start(false);
+//   call_trace::service::Service::Instance().Start(false);
 //
 // This will access and launch a static instance of the service using a
 // default configuration. Specifying false, as in the above example,
@@ -51,8 +48,6 @@ namespace service {
 // can also stopped remotely via an RPC call to CallTraceControl::Stop().
 class Service : public base::PlatformThread::Delegate {
  public:
-  typedef base::ProcessId ProcessId;
-
   // Flag passed to CommitAndExchangeBuffer() to determine whether or
   // not a fresh buffer should be returned to the client.
   enum ExchangeFlag {
@@ -73,15 +68,15 @@ class Service : public base::PlatformThread::Delegate {
   // The default size (in bytes) for each call trace buffer.
   static const size_t kDefaultBufferSize;
 
-  // The default maximum number of buffers pending write that a session should
-  // allow before beginning to force writes.
-  static const size_t kDefaultMaxBuffersPendingWrite;
+  // The name of the Win32 RPC protocol to which the service will bind.
+  static const wchar_t* const kRpcProtocol;
 
-  // Set the id for this instance.
-  void set_instance_id(const base::StringPiece16& id) {
-    DCHECK(!is_running());
-    instance_id_.assign(id.begin(), id.end());
-  }
+  // The name/address of the RPC endpoint at which the service will listen.
+  static const wchar_t* const kRpcEndpoint;
+
+  // The name of the global mutex used to detect whether another instance of
+  // the service is already running.
+  static const wchar_t* const kRpcMutex;
 
   // Set the trace flags that get communicated to clients on session creation.
   // The flags value should be bitmask composed of the values from the
@@ -95,7 +90,6 @@ class Service : public base::PlatformThread::Delegate {
 
   // Set the directory where trace files are stored.
   void set_trace_directory(const FilePath& directory) {
-    DCHECK(!directory.empty());
     trace_directory_ = directory;
   }
 
@@ -109,26 +103,6 @@ class Service : public base::PlatformThread::Delegate {
   // sessions buffer pool.
   void set_buffer_size_in_bytes(size_t n) {
     buffer_size_in_bytes_ = n;
-  }
-
-  // Sets the maximum number of buffers pending write that a session should
-  // allow before starting to force buffer writes.
-  // @param n the max number of buffers pending write to allow.
-  void set_max_buffers_pending_write(size_t n) {
-    DCHECK_LT(0u, n);
-    max_buffers_pending_write_ = n;
-  }
-
-  // @returns the number of new buffers to be created per allocation.
-  size_t num_incremental_buffers() const { return num_incremental_buffers_; }
-
-  // @returns the size (in bytes) of new buffers to be allocated.
-  size_t buffer_size_in_bytes() const { return buffer_size_in_bytes_; }
-
-  // @returns the maximum number of buffers that sessions should allow to be
-  //     pending writes prior to starting to force them.
-  size_t max_buffers_pending_write() const {
-    return max_buffers_pending_write_;
   }
 
   // Returns true if any of the service's subsystems are running.
@@ -197,23 +171,7 @@ class Service : public base::PlatformThread::Delegate {
   // Allows a session to request its own destruction.
   bool DestroySession(Session* session);
 
-  // @{
-  // Inserts the given buffer(s) into the write queue. When writing has been
-  // finished the session owning each buffer will be notified via RecycleBuffer.
-  // @param buffer the buffer to be written.
-  // @params buffers the buffers to be written.
-  // @returns true on success, false otherwise.
-  bool ScheduleBufferForWriting(Buffer* buffer);
-  bool ScheduleBuffersForWriting(const std::vector<Buffer*>& buffers);
-  // @}
-
- // These are protected for unittesting.
- protected:
-  typedef std::deque<Buffer*> BufferQueue;
-
-  // Called on the session destruction thread to delete sessions.
-  void DoSessionCleanup();
-
+ private:
   // RPC Server Management Functions.
   bool AcquireServiceMutex();
   void ReleaseServiceMutex();
@@ -226,7 +184,7 @@ class Service : public base::PlatformThread::Delegate {
   // of *session will be NULL; otherwise it will point to a Session instance.
   // The call trace service retains ownership of the returned Session object;
   // it MUST not be deleted by the caller.
-  bool GetNewSession(ProcessId client_process_id, Session** session);
+  bool GetNewSession(ProcessID client_process_id, Session** session);
 
   // Looks up an existing session, returning true on success. On failure,
   // the value of *session will be NULL; otherwise it will point to a
@@ -246,10 +204,7 @@ class Service : public base::PlatformThread::Delegate {
   // is non-empty then transfers (swaps) any pending buffers to be written
   // to out_queue. This function expects that out_queue->empty() is true
   // on input.
-  // NOTE: This is virtual for testing purposes. This function is a gateway
-  //     that allows us to finely control which buffers get picked up from the
-  //     write queue.
-  virtual bool GetBuffersToWrite(BufferQueue* out_queue);
+  bool GetBuffersToWrite(BufferQueue* out_queue);
 
   // Launch the writer thread, which will consume buffers from
   // pending_write_queue_ and commit them to disk. Returns true on
@@ -263,15 +218,14 @@ class Service : public base::PlatformThread::Delegate {
   // Implements the I/O thread via PlatformThread::Delegate::ThreadMain().
   virtual void ThreadMain();
 
-  // Session factory. This is virtual for testing purposes.
-  virtual Session* CreateSession();
-
   // The collection of active trace sessions.
-  typedef std::map<ProcessId, Session*> SessionMap;
   SessionMap sessions_;
 
-  // The instance id to use when running this service instance.
-  std::wstring instance_id_;
+  // The RPC protocol to use.
+  std::wstring protocol_;
+
+  // The RPC endpoing to bind.
+  std::wstring endpoint_;
 
   // The directory where trace files are stored.
   FilePath trace_directory_;
@@ -282,23 +236,13 @@ class Service : public base::PlatformThread::Delegate {
   // The number of bytes in each buffer.
   size_t buffer_size_in_bytes_;
 
-  // The maximum number of buffers that a session should have pending write.
-  size_t max_buffers_pending_write_;
-
   // Handle to the thread that owns/created this call trace service instance.
   base::PlatformThreadId owner_thread_;
 
   // Handle to the thread used for IO.
   base::PlatformThreadHandle writer_thread_;
 
-  // The thread that takes care of session destruction.
-  // This is a temporary hack to workaround deadlocks occurring on session
-  // destructions.
-  // TODO(rogerm): Remove this as you perpetrate the proper fix.
-  base::Thread session_destruction_thread_;
-
-  // Protects concurrent access to the internals, except for write-queue
-  // related internals.
+  // Protects concurrent access to the internals.
   base::Lock lock_;
 
   // Used to detect whether multiple instances of the service are running
@@ -306,9 +250,8 @@ class Service : public base::PlatformThread::Delegate {
   base::win::ScopedHandle service_mutex_;
 
   // Buffers waiting to be written to disk.
-  BufferQueue pending_write_queue_;  // Under queue_lock_.
-  base::ConditionVariable queue_is_non_empty_;  // Under queue_lock_.
-  base::Lock queue_lock_;
+  BufferQueue pending_write_queue_;
+  base::ConditionVariable queue_is_non_empty_;
 
   // Flags denoting the state of the RPC server.
   bool rpc_is_initialized_;
@@ -322,7 +265,7 @@ class Service : public base::PlatformThread::Delegate {
   DISALLOW_COPY_AND_ASSIGN(Service);
 };
 
-}  // namespace trace::service
-}  // namespace trace
+}  // namespace call_trace::service
+}  // namespace call_trace
 
 #endif  // SYZYGY_TRACE_SERVICE_SERVICE_H_

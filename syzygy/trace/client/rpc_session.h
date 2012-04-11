@@ -19,24 +19,17 @@
 
 #include <map>
 
-#include "base/logging.h"
 #include "base/synchronization/lock.h"
 #include "syzygy/trace/client/client_utils.h"
 #include "syzygy/trace/protocol/call_trace_defs.h"
 
-namespace trace {
+namespace call_trace {
 namespace client {
 
 class RpcSession {
  public:
   RpcSession();
   ~RpcSession();
-
-  // Set the instance identifier for this session.
-  void set_instance_id(const base::StringPiece16& instance_id) {
-    DCHECK(!IsTracing());
-    instance_id_.assign(instance_id.begin(), instance_id.end());
-  }
 
   // Wrapper and helper functions for the RPC and shared memory calls made
   // by the call-trace client.
@@ -62,7 +55,6 @@ class RpcSession {
   unsigned long flags() const { return flags_; }
 
  private:
-  // Map a tracefile segment buffer into local memory.
   bool MapSegmentBuffer(TraceFileSegment* segment);
 
   // The call trace RPC binding.
@@ -89,13 +81,9 @@ class RpcSession {
   // This is used to allow the application to run even if no call trace
   // service is available.
   bool is_disabled_;
-
-  // The (optional) unique id used to differentiate concurrent instances of the
-  // RPC call-trace logging service.
-  std::wstring instance_id_;
 };
 
-}  // namespace trace::client
-}  // namespace trace
+}  // namespace call_trace::client
+}  // namespace call_trace
 
 #endif  // SYZYGY_TRACE_CLIENT_RPC_SESSION_H_

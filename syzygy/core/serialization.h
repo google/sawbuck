@@ -1,4 +1,4 @@
-// Copyright 2012 Google Inc.
+// Copyright 2011 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,12 +22,7 @@
 //   FILE* file = OpenFile("foo.dat", "wb");
 //   FileOutStream out_stream(file);
 //   NativeBinaryOutArchive out_archive(out_stream);
-//   out_archive.Save(object);
-//   out_archive.Flush();
-//
-// Note that an output stream must be flushed as the archive or the stream may
-// introduce some buffering. If not explicitly called, it will be called for an
-// OutStream or OutArchive when it is destroyed.
+//   out_archive.Save(object)
 //
 // To deserialize an object:
 //
@@ -35,7 +30,7 @@
 //   FILE* file = OpenFile("foo.dat", "rb");
 //   FileInStream in_stream(file);
 //   NativeBinaryInArchive in_archive(in_stream);
-//   in_archive.Load(&object);
+//   in_archive.Load(&object)
 //
 // Serialization of primitive types (bool, char, wchar_t, float, double,
 // int8/16/32/64, uint8/16/32/64), C-arrays of serializable types, and STL
@@ -108,7 +103,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 #include "base/basictypes.h"
 #include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
@@ -143,60 +137,12 @@ template<class Data, class InArchive> bool Load(
 class OutStream {
  public:
   virtual ~OutStream() { }
-
-  // An OutStream is expected to write all data provided to it. If it fails this
-  // is considered a fatal error, and the stream is no longer usable.
   virtual bool Write(size_t length, const Byte* bytes) = 0;
-
-  // Flushes any buffered data currently contained in this stream. Flush should
-  // only be called at most once for a given stream and should be interpreted
-  // as an end of stream event.
-  virtual bool Flush() { return true; }
 };
 class InStream {
  public:
   virtual ~InStream() { }
-
-  // An input stream is expected to read all data asked of it, unless the data
-  // source has been exhausted and only a partial read is possible. In this
-  // case it must still return true. A return value of false is fatal and
-  // indicates that the stream is no longer usable.
-  // @param length the number of bytes to read.
-  // @param bytes a pointer to a buffer of length at least @p length to receive
-  //     the bytes that are read.
-  // @param bytes_read to receive the number of bytes actually read. It is
-  //     possible for this to be any value from 0 to length, inclusive.
-  // @returns true if the stream is reusable, false if it is errored.
-  bool Read(size_t length, Byte* bytes, size_t* bytes_read) {
-    return ReadImpl(length, bytes, bytes_read);
-  }
-
-  // Calling this version of read is only safe if you have implicit knowledge
-  // of the length of the input stream. This is inline so that common_lib, which
-  // uses serialization, doesn't need a (circular) dependency on core_lib.
-  // @param length the number of bytes to read.
-  // @param bytes a pointer to a buffer of length at least @p length to receive
-  //     the bytes that are read.
-  // @returns true if the entire length of bytes was able to be read, false
-  //     otherwise.
-  bool Read(size_t length, Byte* bytes) {
-    size_t bytes_read = 0;
-    if (!ReadImpl(length, bytes, &bytes_read))
-      return false;
-    if (bytes_read != length)
-      return false;
-    return true;
-  }
-
- protected:
-  // Needs to be implemented by derived classes. See description of Read above.
-  // @param length the number of bytes to read.
-  // @param bytes a pointer to a buffer of length at least @p length to receive
-  //     the bytes that are read.
-  // @param bytes_read to receive the number of bytes actually read. It is
-  //     possible for this to be any value from 0 to length, inclusive.
-  // @returns true if the stream is reusable, false if it is errored.
-  virtual bool ReadImpl(size_t length, Byte* bytes, size_t* bytes_read) = 0;
+  virtual bool Read(size_t length, Byte* bytes) = 0;
 };
 typedef scoped_ptr<OutStream> ScopedOutStreamPtr;
 typedef scoped_ptr<InStream> ScopedInStreamPtr;
@@ -207,8 +153,6 @@ class FileOutStream : public OutStream {
   explicit FileOutStream(FILE* file);
   virtual ~FileOutStream() { }
   virtual bool Write(size_t length, const Byte* bytes);
-  virtual bool Flush();
-
  private:
   FILE* file_;
 };
@@ -218,10 +162,7 @@ class FileInStream : public InStream {
  public:
   explicit FileInStream(FILE* file);
   virtual ~FileInStream() { }
-
- protected:
-  virtual bool ReadImpl(size_t length, Byte* bytes, size_t* bytes_read);
-
+  virtual bool Read(size_t length, Byte* bytes);
  private:
   FILE* file_;
 };
@@ -287,8 +228,7 @@ template<typename InputIterator> class ByteInStream : public InStream {
 
   virtual ~ByteInStream() { }
 
- protected:
-  virtual bool ReadImpl(size_t length, Byte* bytes, size_t* bytes_read);
+  virtual bool Read(size_t length, Byte* bytes);
 
  private:
   InputIterator iter_;
@@ -313,8 +253,6 @@ class NativeBinaryOutArchive {
       : out_stream_(out_stream) {
     DCHECK(out_stream != NULL);
   }
-
-  ~NativeBinaryOutArchive() { Flush(); }
 
   template<class Data> bool Save(const Data& data) {
     return core::Save(data, this);
@@ -343,8 +281,6 @@ class NativeBinaryOutArchive {
   NATIVE_BINARY_OUT_ARCHIVE_SAVE(uint64);
   NATIVE_BINARY_OUT_ARCHIVE_SAVE(unsigned long);
 #undef NATIVE_BINARY_OUT_ARCHIVE_SAVE
-
-  bool Flush() { return out_stream_->Flush(); }
 
   OutStream* out_stream() { return out_stream_; }
 

@@ -56,17 +56,13 @@ class MetricHandler(webapp.RequestHandler):
       return
 
     if not metric_id:
-      metrics = metric_db.Metric.all()
-      metrics.ancestor(client)
-      metrics_result = []
-      for metric in metrics:
-        metrics_result.append({'metric_id': metric.key().name(),
-                               'description': metric.description,
-                               'units': metric.units})
+      metric_keys = metric_db.Metric.all(keys_only=True)
+      metric_keys.ancestor(client)
+      metric_ids = [key.name() for key in metric_keys]
 
       result = {'product_id': product.key().name(),
                 'client_id': client.key().name(),
-                'metrics': metrics_result}
+                'metric_ids': metric_ids}
     else:
       metric = metric_db.Metric.get_by_key_name(metric_id, client)
       if not metric:
@@ -129,7 +125,6 @@ class MetricHandler(webapp.RequestHandler):
     metric = metric_db.Metric(key_name=metric_id, parent=client,
                               description=description, units=units)
     metric.put()
-    self.response.set_status(httplib.CREATED, message='MetricCreated')
 
   def put(self, product_id, client_id, metric_id):
     """Updates a metric.

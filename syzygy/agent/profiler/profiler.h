@@ -26,7 +26,6 @@
 
 #include <vector>
 
-#include "base/hash_tables.h"
 #include "base/lazy_instance.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/thread_local.h"
@@ -39,8 +38,8 @@ extern "C" void _cdecl _indirect_penter_dllmain();
 extern "C" void _cdecl _indirect_penter_inside_function();
 extern void pexit();
 
-namespace agent {
-namespace profiler {
+namespace call_trace {
+namespace client {
 
 // There's a single instance of this class.
 class Profiler {
@@ -58,9 +57,6 @@ class Profiler {
   // @param pc_location an address on stack where a return address is stored.
   // @returns the address where the profiler stashed the original return address
   //     if *(@p pc_location) refers to a thunk, otherwise @p pc_location.
-  // @note this function must be able to resolve through thunks that belong
-  //     to other threads, as e.g. V8 will traverse all stacks that are using
-  //     V8 during garbage collection.
   RetAddr* ResolveReturnAddressLocation(RetAddr* pc_location);
 
   // Call when a thread is terminating.
@@ -76,11 +72,6 @@ class Profiler {
   Profiler();
   ~Profiler();
 
-  // Called form DllMainEntryHook.
-  void OnModuleEntry(EntryFrame* entry_frame,
-                     FuncAddr function,
-                     uint64 cycles);
-
   // Callbacks from ThreadState.
   void OnPageAdded(const void* page);
   void OnPageRemoved(const void* page);
@@ -94,24 +85,20 @@ class Profiler {
   void FreeThreadState();
 
   // The RPC session we're logging to/through.
-  trace::client::RpcSession session_;
+  call_trace::client::RpcSession session_;
 
-  // Protects pages_ and logged_modules_.
+  // Protects our page list.
   base::Lock lock_;
 
   // Contains the thunk pages in lexical order.
   typedef std::vector<const void*> PageVector;
   PageVector pages_;  // Under lock_.
 
-  // Contains the set of modules we've seen and logged.
-  typedef base::hash_set<HMODULE> ModuleSet;
-  ModuleSet logged_modules_;  // Under lock_.
-
   // This points to our per-thread state.
   mutable base::ThreadLocalPointer<ThreadState> tls_;
 };
 
-}  // namespace profiler
-}  // namespace agent
+}  // namespace call_trace::client
+}  // namespace call_trace
 
 #endif  // SYZYGY_AGENT_PROFILER_PROFILER_H_

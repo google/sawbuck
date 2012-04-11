@@ -22,18 +22,18 @@
 #include "base/logging.h"
 #include "sawbuck/common/com_utils.h"
 
-namespace trace {
+namespace call_trace {
 namespace client {
 
-bool CreateRpcBinding(const base::StringPiece16& protocol,
-                      const base::StringPiece16& endpoint,
+bool CreateRpcBinding(const wchar_t* protocol,
+                      const wchar_t* endpoint,
                       handle_t* out_handle) {
-  DCHECK(!protocol.empty());
-  DCHECK(!endpoint.empty());
+  DCHECK(protocol != NULL);
+  DCHECK(endpoint != NULL);
   DCHECK(out_handle != NULL);
 
-  std::wstring protocol_temp(protocol.begin(), protocol.end());
-  std::wstring endpoint_temp(endpoint.begin(), endpoint.end());
+  std::wstring protocol_temp(protocol);
+  std::wstring endpoint_temp(endpoint);
   RPC_WSTR string_binding = NULL;
 
   RPC_STATUS status = ::RpcStringBindingCompose(
@@ -62,5 +62,5 @@ bool CreateRpcBinding(const base::StringPiece16& protocol,
   return true;
 }
 
-}  // namespace trace::client
-}  // namespace trace
+}  // namespace call_trace::client
+}  // namespace call_trace

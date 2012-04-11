@@ -1,4 +1,4 @@
-// Copyright 2012 Google Inc.
+// Copyright 2011 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,15 +13,15 @@
 // limitations under the License.
 
 #include "syzygy/pdb/pdb_writer.h"
-
 #include "base/file_util.h"
 #include "gtest/gtest.h"
 #include "syzygy/pdb/pdb_constants.h"
 #include "syzygy/pdb/pdb_reader.h"
 
-namespace pdb {
-
 namespace {
+
+using pdb::PdbStream;
+using pdb::PdbWriter;
 
 uint32 GetNumPages(uint32 num_bytes) {
   return (num_bytes + pdb::kPdbPageSize - 1) / pdb::kPdbPageSize;
@@ -51,6 +51,7 @@ class TestPdbStream : public PdbStream {
   explicit TestPdbStream(uint32 length) : PdbStream(length) {
   }
 
+ protected:
   bool ReadBytes(void* dest, size_t count, size_t* bytes_read) {
     DCHECK(bytes_read != NULL);
 
@@ -75,11 +76,16 @@ using pdb::kPdbPageSize;
 using pdb::PdbHeader;
 using pdb::PdbReader;
 
-TEST(PdbWriterTest, WritePdbFile) {
-  PdbFile pdb_file;
-  for (uint32 i = 0; i < 4; ++i) {
-    pdb_file.AppendStream(new TestPdbStream(1 << (8 + i)));
-  }
+TEST(PdbWriterTest, Write) {
+  TestPdbStream test_streams[] = {
+    TestPdbStream((1 << 8) + 123),
+    TestPdbStream((1 << 9) + 321),
+    TestPdbStream((1 << 10) + 456),
+    TestPdbStream((1 << 11) + 654)
+  };
+  std::vector<PdbStream*> streams;
+  for (uint32 i = 0; i < arraysize(test_streams); ++i)
+    streams.push_back(&test_streams[i]);
 
   // Test that we can create a pdb file and then read it successfully.
   FilePath path;
@@ -87,20 +93,13 @@ TEST(PdbWriterTest, WritePdbFile) {
   {
     // Create a scope so that the file gets closed.
     TestPdbWriter writer;
-    EXPECT_TRUE(writer.Write(path, pdb_file));
+    EXPECT_TRUE(writer.Write(path, streams));
   }
 
-  PdbFile pdb_file_read;
+  streams.clear();
   PdbReader reader;
-  EXPECT_TRUE(reader.Read(path, &pdb_file_read));
-  EXPECT_EQ(pdb_file.StreamCount(), pdb_file_read.StreamCount());
-
-  for (size_t i = 0; i < pdb_file.StreamCount(); ++i) {
-    ASSERT_TRUE(pdb_file.GetStream(i) != NULL);
-    ASSERT_TRUE(pdb_file_read.GetStream(i) != NULL);
-    EXPECT_EQ(pdb_file.GetStream(i)->length(),
-              pdb_file_read.GetStream(i)->length());
-  }
+  EXPECT_TRUE(reader.Read(path, &streams));
+  EXPECT_EQ(arraysize(test_streams), streams.size());
 }
 
 TEST(PdbWriterTest, PadToPageBoundary) {
@@ -140,9 +139,9 @@ TEST(PdbWriterTest, AppendStream) {
   // Test that the bytes written corresponds to the stream length and padding.
   TestPdbWriter writer;
   size_t len = (1 << 17) + 123;
-  scoped_refptr<TestPdbStream> stream(new TestPdbStream(len));
+  TestPdbStream stream(len);
   uint32 bytes_written;
-  EXPECT_TRUE(writer.AppendStream(stream.get(), &bytes_written));
+  EXPECT_TRUE(writer.AppendStream(&stream, &bytes_written));
   EXPECT_EQ(GetNumPages(len) * kPdbPageSize, bytes_written);
 
   // Test that the correct data is written.
@@ -268,5 +267,3 @@ TEST(PdbWriterTest, WriteHeader) {
     EXPECT_EQ(dir_root_page + i, header.root_pages[i]);
   }
 }
-
-}  // namespace pdb

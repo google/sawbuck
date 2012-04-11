@@ -14,7 +14,6 @@
 
 #include "syzygy/agent/profiler/return_thunk_factory.h"
 
-#include "base/logging.h"
 #include "syzygy/agent/profiler/scoped_last_error_keeper.h"
 
 namespace {
@@ -25,15 +24,12 @@ extern "C" void __declspec(naked) thunk_main_asm() {
   __asm {
     // Stash volatile registers.
     push eax
-    push edx
-
-    // Get the current cycle time ASAP.
-    rdtsc
-
     push ecx
+    push edx
     pushfd
 
-    // Push the cycle time arg for the ThunkMain function.
+    // Get the current cycle time.
+    rdtsc
     push edx
     push eax
 
@@ -45,30 +41,37 @@ extern "C" void __declspec(naked) thunk_main_asm() {
     sub eax, 5
     push eax
 
-    call agent::profiler::ReturnThunkFactory::ThunkMain
+    call call_trace::client::ReturnThunkFactory::ThunkMain
 
     // Restore volatile registers, except eax.
     popfd
-    pop ecx
     pop edx
+    pop ecx
 
-    // At this point we have:
+    // We start with:
     //   EAX: real ret-address
     //   stack:
     //     pushed EAX
     //     ret-address to thunk
-    push eax
-    mov eax, DWORD PTR[esp+4]
+    //
+    // We end with:
+    //   EAX: pushed EAX
+    //   stack:
+    //     ret-address to thunk
+    //     real ret-address
+    xchg eax, DWORD PTR[esp + 0x4]
+    xchg eax, DWORD PTR[esp]
 
-    // Return and discard the stored eax and discarded return address.
-    ret 8
+    // Return to the thunk, which will in turn return to the real
+    // return address.
+    ret
   }
 }
 
 }  // namespace
 
-namespace agent {
-namespace profiler {
+namespace call_trace {
+namespace client {
 
 ReturnThunkFactory::ReturnThunkFactory(Delegate* delegate)
     : delegate_(delegate),
@@ -84,7 +87,7 @@ ReturnThunkFactory::~ReturnThunkFactory() {
   while (current_page->previous_page)
     current_page = current_page->previous_page;
 
-  while (current_page) {
+  while (current_page->next_page) {
     Page* page_to_free = current_page;
     current_page = current_page->next_page;
 
@@ -113,19 +116,6 @@ ReturnThunkFactory::Thunk* ReturnThunkFactory::MakeThunk(RetAddr real_ret) {
   return thunk;
 }
 
-ReturnThunkFactory::Thunk* ReturnThunkFactory::CastToThunk(RetAddr ret) {
-  Thunk* thunk = const_cast<Thunk*>(reinterpret_cast<const Thunk*>(ret));
-  Page* thunk_page = PageFromThunk(thunk);
-  Page* page = PageFromThunk(first_free_thunk_);
-
-  for (; page != NULL; page = page->previous_page) {
-    if (page == thunk_page)
-      return thunk;
-  }
-
-  return NULL;
-}
-
 void ReturnThunkFactory::AddPage() {
   Page* previous_page = PageFromThunk(first_free_thunk_);
   DCHECK(previous_page == NULL || previous_page->next_page == NULL);
@@ -149,7 +139,8 @@ void ReturnThunkFactory::AddPage() {
     Thunk* thunk = &new_page->thunks[i];
     thunk->call = 0xE8;  // call
     thunk->func_addr = reinterpret_cast<DWORD>(thunk_main_asm) -
-        reinterpret_cast<DWORD>(&thunk->caller);
+        reinterpret_cast<DWORD>(&thunk->ret);
+    thunk->ret = 0xC3;
   }
 
   first_free_thunk_ = &new_page->thunks[0];
@@ -182,5 +173,5 @@ RetAddr WINAPI ReturnThunkFactory::ThunkMain(Thunk* thunk, uint64 cycles) {
   return thunk->caller;
 }
 
-}  // namespace profiler
-}  // namespace agent
+}  // namespace client
+}  // namespace call_trace

@@ -24,7 +24,7 @@
 #include "sawbuck/common/com_utils.h"
 #include "syzygy/trace/parse/parser.h"
 
-namespace trace {
+namespace call_trace {
 namespace parser {
 
 ParseEngine::ParseEngine(const char* name, bool fail_on_module_conflict)
@@ -227,8 +227,8 @@ bool ParseEngine::DispatchEvent(EVENT_TRACE* event) {
       LOG(ERROR) << "Parsing for TRACE_MODULE_EVENT not yet implemented.";
       break;
 
-    case TRACE_BATCH_INVOCATION:
-      success = DispatchBatchInvocationEvent(event);
+    case TRACE_INVOCATION_BATCH:
+      success = DispatchInvocationBatch(event);
       break;
 
     default:
@@ -342,7 +342,7 @@ bool ParseEngine::DispatchProcessEndedEvent(EVENT_TRACE* event) {
   return true;
 }
 
-bool ParseEngine::DispatchBatchInvocationEvent(EVENT_TRACE* event) {
+bool ParseEngine::DispatchInvocationBatch(EVENT_TRACE* event) {
   DCHECK(event != NULL);
   DCHECK(event_handler_ != NULL);
   DCHECK(error_occurred_ == false);
@@ -353,7 +353,7 @@ bool ParseEngine::DispatchBatchInvocationEvent(EVENT_TRACE* event) {
     return false;
   }
 
-  const TraceBatchInvocationInfo* data = NULL;
+  const InvocationInfoBatch* data = NULL;
   if (!reader.Read(event->MofLength, &data)) {
     LOG(ERROR) << "Short or empty batch event.";
     return false;
@@ -446,5 +446,5 @@ bool ParseEngine::DispatchModuleEvent(EVENT_TRACE* event,
   return true;
 }
 
-}  // namespace trace::parser
-}  // namespace trace
+}  // namespace call_trace::parser
+}  // namespace call_trace

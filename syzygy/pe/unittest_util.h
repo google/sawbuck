@@ -18,13 +18,11 @@
 #include <windows.h>
 
 #include "base/file_path.h"
-#include "base/file_util.h"
 #include "gtest/gtest.h"
-#include "syzygy/common/unittest_util.h"
 
 namespace testing {
 
-class PELibUnitTest : public testing::ApplicationTestBase {
+class PELibUnitTest : public testing::Test {
  public:
   // Name of the test DLL and PDB.
   static const wchar_t kDllName[];
@@ -41,7 +39,7 @@ class PELibUnitTest : public testing::ApplicationTestBase {
   static const wchar_t kRpcInstrumentedDllPdbName[];
 
   // Cleans up after each test invocation.
-  virtual void TearDown() OVERRIDE;
+  virtual void TearDown();
 
   // Retrieves the PDB path associated with the PE file at a given path and
   // compares it to an expected path value.

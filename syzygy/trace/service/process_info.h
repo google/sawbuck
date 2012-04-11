@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// This file declares the trace::service::ProcessInfo class which
+// This file declares the call_trace::service::ProcessInfo class which
 // retrieves and encapsulates the process related information captured
 // within a trace file.
 
 #ifndef SYZYGY_TRACE_SERVICE_PROCESS_INFO_H_
 #define SYZYGY_TRACE_SERVICE_PROCESS_INFO_H_
 
-#include <windows.h>
 #include <string>
 
 #include "base/basictypes.h"
 #include "base/file_path.h"
 #include "base/win/scoped_handle.h"
 
-namespace trace {
+namespace call_trace {
 namespace service {
 
 // This class retrieves and encapsulates the process related information
@@ -38,7 +37,7 @@ namespace service {
 //
 // Usage:
 //
-//   trace::service::ProcessInfo info;
+//   call_trace::service::ProcessInfo info;
 //   if (!info.Initialize(some_pid)) {
 //     LOG(ERROR) << "Failed to retrieve process info.";
 //   } else {
@@ -75,16 +74,6 @@ struct ProcessInfo {
   // The command line for the process.
   std::wstring command_line;
 
-  // The environment block of the process. This is a sequence of wide strings,
-  // each of which is terminated by a single NULL. The entire sequence is
-  // terminated by a double NULL.
-  std::vector<wchar_t> environment;
-
-  // System information.
-  OSVERSIONINFOEX os_version_info;
-  SYSTEM_INFO system_info;
-  MEMORYSTATUSEX memory_status;
-
   // The base address at which the executable image is currently loaded.
   uint32 exe_base_address;
 
@@ -101,7 +90,7 @@ struct ProcessInfo {
   DISALLOW_COPY_AND_ASSIGN(ProcessInfo);
 };
 
-}  // namespace trace::service
-}  // namespace trace
+}  // namespace call_trace::service
+}  // namespace call_trace
 
 #endif  // SYZYGY_TRACE_SERVICE_PROCESS_INFO_H_

@@ -30,7 +30,6 @@
 
 #include "base/win/event_trace_consumer.h"
 #include "sawbuck/log_lib/kernel_log_consumer.h"
-#include "syzygy/block_graph/block_graph.h"
 #include "syzygy/pdb/omap.h"
 #include "syzygy/pe/decomposer.h"
 #include "syzygy/pe/image_layout.h"
@@ -40,12 +39,11 @@ namespace playback {
 
 class Playback {
  public:
-  typedef block_graph::BlockGraph BlockGraph;
+  typedef call_trace::parser::ModuleInformation ModuleInformation;
+  typedef call_trace::parser::Parser Parser;
   typedef pe::ImageLayout ImageLayout;
   typedef pe::PEFile PEFile;
   typedef std::vector<FilePath> TraceFileList;
-  typedef trace::parser::ModuleInformation ModuleInformation;
-  typedef trace::parser::Parser Parser;
 
   // Construct a new Playback instance.
   // @param module_path The path of the module dll.
@@ -58,25 +56,16 @@ class Playback {
   ~Playback();
 
   // Initalizes the playback class and decomposes the given image.
-  // This function is virtual to aid testing of classes that may own Playback.
   // @param pe_file The PE file to be initialized.
   // @param image The image that will receive the decomposed module.
   // @param parser The parser to be used.
   // @returns true on success, false on failure.
-  virtual bool Init(PEFile* pe_file, ImageLayout* image, Parser* parser);
+  bool Init(PEFile* pe_file, ImageLayout* image, Parser* parser);
 
   // @returns true if the given ModuleInformation matches the instrumented
   // module signature, false otherwise.
   bool MatchesInstrumentedModuleSignature(
       const ModuleInformation& module_info) const;
-
-  // Gets a code block from our image from its function address and process id.
-  // @param process_id The process id of the module where the function resides.
-  // @param function The relative address of the function we are searching.
-  // @returns The code block function and process_id refer to, or NULL in case
-  //     of an error.
-  const BlockGraph::Block* FindFunctionBlock(DWORD process_id,
-                                             FuncAddr function);
 
   // @name Accessors
   // @{

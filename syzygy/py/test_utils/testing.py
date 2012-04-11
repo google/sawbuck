@@ -1,4 +1,4 @@
-# Copyright 2012 Google Inc.
+# Copyright 2011 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,9 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Defines a collection of classes for running unit-tests."""
-
 import build_project
 import cStringIO
 import datetime
@@ -24,28 +22,7 @@ import presubmit
 import re
 import subprocess
 import sys
-import verifier
 
-
-_LOGGER = logging.getLogger(os.path.basename(__file__))
-
-
-# A list of per-test Application Verifier exceptions. This doesn't really
-# belong here, this should be plumbed in to individual tests from the invoker.
-# In the interest of temporary expediency, we leave it here for now.
-# TODO(siggi): Move the exception list out of here.
-_EXCEPTIONS = {
-  'profile_unittests.exe': [
-    # This leak occurs only in Debug, which leaks a thread local variable
-    # used to check thread restrictions.
-    ('Error', 'TLS', 848, 'agent::profiler::.*::ProfilerTest::UnloadDll'),
-  ],
-  'parse_unittests.exe': [
-    # This leak occurs only in Debug, which leaks a thread local variable
-    # used to check thread restrictions.
-    ('Error', 'TLS', 848, '.*::ParseEngineRpcTest::UnloadCallTraceDll'),
-  ],
-}
 
 class Error(Exception):
   """An error class used for reporting problems while running tests."""
@@ -76,8 +53,7 @@ import colorama
 
 def BuildProjectConfig(*args, **kwargs):
   """Wraps build_project.BuildProjectConfig, but ensures that if it throws
-  an error it is of type testing.Error.
-  """
+  an error it is of type testing.Error."""
   try:
     build_project.BuildProjectConfig(*args, **kwargs)
   except build_project.Error:
@@ -93,8 +69,7 @@ class Test(object):
   directory.
 
   The 'Main' routine of any Test object may also be called to have it
-  run as as stand-alone command line test.
-  """
+  run as as stand-alone command line test."""
 
   def __init__(self, project_dir, name):
     self._project_dir = project_dir
@@ -117,8 +92,7 @@ class Test(object):
   def LastRunTime(self, configuration):
     """Returns the time this test was last run in the given configuration.
     Returns 0 if the test has no success file (equivalent to never having
-    been run).
-    """
+    been run)."""
     try:
       return os.stat(self.GetSuccessFilePath(configuration)).st_mtime
     except (IOError, WindowsError):
@@ -167,10 +141,9 @@ class Test(object):
 
   def _MakeSuccessFile(self, configuration):
     """Makes the success file corresponding to this test in the given
-    configuration.
-    """
+    configuration."""
     success_path = self.GetSuccessFilePath(configuration)
-    _LOGGER.info('Creating success file "%s".',
+    logging.info('Creating success file "%s".',
                  os.path.relpath(success_path, self._project_dir))
     success_file = open(success_path, 'wb')
     success_file.write(str(datetime.datetime.now()))
@@ -207,6 +180,7 @@ class Test(object):
     self._stderr.write(value)
     return
 
+
   def _GetStdout(self):
     """Returns any accumulated stdout, and erases the buffer."""
     stdout = self._stdout.getvalue()
@@ -219,7 +193,7 @@ class Test(object):
     self._stderr = cStringIO.StringIO()
     return stderr
 
-  def Run(self, configuration, force=False, app_verifier=False):
+  def Run(self, configuration, force=False):
     """Runs the test in the given configuration. The derived instance of Test
     must implement '_Run(self, configuration)', which raises an exception on
     error or does nothing on success. Upon success of _Run, this will generate
@@ -230,8 +204,6 @@ class Test(object):
       configuration: The configuration in which to run.
       force: If True, this will force the test to re-run even if _NeedToRun
           would return False.
-      app_verifier: If True, this will run the given test using the
-          AppVerifier tool.
 
     Returns:
       True on success, False otherwise.
@@ -239,58 +211,54 @@ class Test(object):
     # Store optional arguments in a side-channel, so as to allow additions
     # without changing the _Run/_NeedToRun/_CanRun API.
     self._force = force
-    self._app_verifier = app_verifier
 
-    success = True
     try:
       if not self._CanRun(configuration):
-        _LOGGER.info('Skipping test "%s" in invalid configuration "%s".',
+        logging.info('Skipping test "%s" in invalid configuration "%s".',
                      self._name, configuration)
-        return True
+        return
 
       # Always run _NeedToRun, even if force is true. This is because it may
       # do some setup work that is required prior to calling _Run.
-      _LOGGER.info('Checking to see if we need to run test "%s" in '
+      logging.info('Checking to see if we need to run test "%s" in '
                    'configuration "%s".', self._name, configuration)
       need_to_run = self._NeedToRun(configuration)
 
       if need_to_run:
-        _LOGGER.info('Running test "%s" in configuration "%s".',
+        logging.info('Running test "%s" in configuration "%s".',
                      self._name, configuration)
       else:
-        _LOGGER.info('No need to re-run test "%s" in configuration "%s".',
+        logging.info('No need to re-run test "%s" in configuration "%s".',
                      self._name, configuration)
 
       if not need_to_run and force:
-        _LOGGER.info('Forcing re-run of test "%s" in configuration "%s".',
+        logging.info('Forcing re-run of test "%s" in configuration "%s".',
                      self._name, configuration)
         need_to_run = True
 
       if need_to_run:
-        if not self._Run(configuration):
-          raise TestFailure('Test "%s" failed in configuration "%s".' %
-                                (self._name, configuration))
+        self._Run(configuration)
+
+        # We dump out stdout. We don't write stderr as this is saved for the
+        # top most test, which will report all accumulated stderr's back to
+        # back.
+        sys.stdout.write(self._GetStdout())
 
       self._MakeSuccessFile(configuration)
     except TestFailure, e:
-      fore = colorama.Fore
-      style = colorama.Style
-      self._WriteStdout(style.BRIGHT + fore.RED + str(e) + '\n' +
-                            style.RESET_ALL)
-      success = False
+      self._WriteStderr(str(e) + '\n')
+      return False
     finally:
-      # Forward the stdout, which we've caught and stuffed in a string.
       sys.stdout.write(self._GetStdout())
 
-    return success
+    return True
 
   @staticmethod
   def _GetOptParser():
     """Builds an option parser for this class. This function is static as
     it may be called by the constructor of derived classes before the object
     is fully initialized. It may also be overridden by derived classes so that
-    they may augment the option parser with additional options.
-    """
+    they may augment the option parser with additional options."""
     parser = optparse.OptionParser()
     parser.add_option('-c', '--config', dest='configs',
                       action='append', default=[],
@@ -301,9 +269,6 @@ class Test(object):
     parser.add_option('-f', '--force', dest='force',
                       action='store_true', default=False,
                       help='Force tests to re-run even if not necessary.')
-    parser.add_option('--no-app-verifier', dest='app_verifier',
-                      action='store_false', default=True,
-                      help='Run tests without AppVerifier.')
     parser.add_option('--verbose', dest='log_level', action='store_const',
                       const=logging.INFO, default=logging.WARNING,
                       help='Run the script with verbose logging.')
@@ -326,10 +291,8 @@ class Test(object):
       # We don't catch any exceptions that may be raised as these indicate
       # something has gone really wrong, and we want them to interrupt further
       # tests.
-      if not self.Run(config,
-                      force=options.force,
-                      app_verifier=options.app_verifier):
-        _LOGGER.error('Configuration "%s" of test "%s" failed.',
+      if not self.Run(config, force=options.force):
+        logging.error('Configuration "%s" of test "%s" failed.',
                       config, self._name)
         result = 1
 
@@ -339,113 +302,38 @@ class Test(object):
     return result
 
 
-def _AppVerifierColorize(text):
-  """Colorizes the given app verifier output with ANSI color codes."""
-  fore = colorama.Fore
-  style = colorama.Style
-  def _ColorizeLine(line):
-    line = re.sub('^(Error\([^,]+, [^\)]+\):)( .*)',
-                  style.BRIGHT + fore.RED + '\\1' + fore.YELLOW + '\\2' +
-                      style.RESET_ALL,
-                  line)
-    return line
-
-  return '\n'.join([_ColorizeLine(line) for line in text.split('\n')])
-
-
 class ExecutableTest(Test):
   """An executable test is a Test that is run by launching a single
-  executable file, and inspecting its return value.
-  """
+  executable file, and inspecting its return value."""
 
   def __init__(self, project_dir, name):
     Test.__init__(self, project_dir, name)
 
   def _GetTestPath(self, configuration):
     """Returns the path to the test executable. This stub may be overridden,
-    but it defaults to 'project_dir/../build/configuration/test_name.exe'.
-    """
-    return os.path.join(self._project_dir, '..', 'build',
+    but it defaults to 'project_dir/../build/configuration/test_name.exe'."""
+    return os.path.join(self._project_dir, '../build',
         configuration, '%s.exe' % self._name)
 
   def _NeedToRun(self, configuration):
     test_path = self._GetTestPath(configuration)
     return os.stat(test_path).st_mtime > self.LastRunTime(configuration)
 
-  def _GetCmdLine(self, configuration):
-    """Returns the command line to run."""
-    return [self._GetTestPath(configuration)]
-
-  def _FilterAppVerifierExceptions(self, image_name, errors):
-    """Filter out the Application Verifier errors that have exceptions."""
-    exceptions = _EXCEPTIONS.get(image_name, [])
-
-    def _HasNoException(error):
-      # Iterate over all the exceptions.
-      for (severity, layer, stopcode, regexp) in exceptions:
-        # And see if they match, first by type.
-        if (error.severity == severity and
-            error.layer == layer and
-            error.stopcode == stopcode):
-          # And then by regexpr match to the trace symbols.
-          for trace in error.trace:
-            if trace.symbol and re.match(regexp, trace.symbol):
-              return False
-
-      return True
-
-    return filter(_HasNoException, errors)
-
   def _Run(self, configuration):
     test_path = self._GetTestPath(configuration)
     rel_test_path = os.path.relpath(test_path, self._project_dir)
-
-    # Create the app verifier test runner.
-    runner = None
-    image_name = None
-    if self._app_verifier:
-      runner = verifier.AppverifierTestRunner(False)
-      image_name = os.path.basename(test_path)
-
-      # Set up the verifier configuration.
-      runner.SetImageDefaults(image_name)
-      runner.ClearImageLogs(image_name)
-
-    # Run the executable.
-    command = self._GetCmdLine(configuration)
+    command = [test_path]
     popen = subprocess.Popen(command, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
     (stdout, unused_stderr) = popen.communicate()
     self._WriteStdout(stdout)
+
     if popen.returncode != 0:
-      # If the test failed, mirror its output to stderr as well. All stderrs of
-      # all failing tests will be concatenated at the end of the top-most
-      # unittest, making errors have better visibility.
+      # Duplicate the output to stderr. This way it'll be reported at the
+      # end of all tests for better visibility.
       self._WriteStderr(stdout)
+      return False
 
-    # Process the AppVerifier logs, outputting any errors.
-    app_verifier_errors = []
-    if self._app_verifier:
-      app_verifier_errors = runner.ProcessLogs(image_name)
-      app_verifier_errors = self._FilterAppVerifierExceptions(
-          image_name, app_verifier_errors)
-      for error in app_verifier_errors:
-        msg = _AppVerifierColorize(str(error) + '\n')
-        self._WriteStdout(msg)
-        self._WriteStderr(msg)
-
-      # Clear the verifier settings for the image.
-      runner.ResetImage(image_name)
-
-    # Bail if we had any errors.
-    if popen.returncode != 0 or app_verifier_errors:
-      msg = 'Test "%s" failed in configuration "%s". Exit code %d.' % \
-                (self._name, configuration, popen.returncode)
-      if self._app_verifier:
-        msg = msg + ' %d AppVerifier errors.' % len(app_verifier_errors)
-      raise TestFailure(msg)
-
-    # If we get here, all has gone well.
     return True
 
 
@@ -473,11 +361,6 @@ class GTest(ExecutableTest):
   def __init__(self, *args, **kwargs):
     return super(GTest, self).__init__(*args, **kwargs)
 
-  def _GetCmdLine(self, configuration):
-    # Run unittests without the exception filter, as it gets in the way of
-    # Application Verifier.
-    return [self._GetTestPath(configuration), '--gtest_catch_exceptions=0']
-
   def _WriteStdout(self, value):
     """Colorizes the stdout of this test."""
     return super(GTest, self)._WriteStdout(_GTestColorize(value))
@@ -490,8 +373,7 @@ class GTest(ExecutableTest):
 class TestSuite(Test):
   """A test suite is a collection of tests that generates a catch-all
   success file upon successful completion. It is itself an instance of a
-  Test, so may be nested.
-  """
+  Test, so may be nested."""
 
   def __init__(self, project_dir, name, tests):
     Test.__init__(self, project_dir, name)
@@ -507,16 +389,15 @@ class TestSuite(Test):
 
   def _NeedToRun(self, configuration):
     """Determines if any of the tests in this suite need to run in the given
-    configuration.
-    """
+    configuration."""
     for test in self._tests:
       try:
         if test._NeedToRun(configuration):
           return True
       except:
         # Output some context before letting the exception continue.
-        _LOGGER.error('Configuration "%s" of test "%s" failed.',
-                      configuration, test._name)
+        logging.error('Configuration "%s" of test "%s" failed.',
+            configuration, test._name)
         raise
     return False
 
@@ -525,13 +406,10 @@ class TestSuite(Test):
 
     Runs the provided collection of tests, generating a global success file
     upon completion of them all. Runs all tests even if any test fails. Stops
-    running all tests if any of them raises an exception.
-    """
+    running all tests if any of them raises an exception."""
     success = True
     for test in self._tests:
-      if not test.Run(configuration,
-                      force=self._force,
-                      app_verifier=self._app_verifier):
+      if not test.Run(configuration, force=self._force):
         # Keep a cumulative log of all stderr from each test that fails.
         self._WriteStderr(test._GetStderr())
         success = False

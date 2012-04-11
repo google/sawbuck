@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// This file implements the trace::service::Buffer and BufferPool
+// This file implements the call_trace::service::Buffer and BufferPool
 // structures, which are used to represent the shared memory buffers
 // used by the call_trace service.
 
@@ -21,7 +21,7 @@
 #include "base/logging.h"
 #include "sawbuck/common/com_utils.h"
 
-namespace trace {
+namespace call_trace {
 namespace service {
 
 BufferPool::BufferPool() : base_ptr_(NULL) {
@@ -36,8 +36,10 @@ BufferPool::~BufferPool() {
 }
 
 bool BufferPool::Init(Session* session,
+                      HANDLE client_process_handle,
                       size_t num_buffers,
                       size_t buffer_size) {
+  DCHECK(client_process_handle != NULL);
   DCHECK(num_buffers != 0);
   DCHECK(buffer_size != 0);
   DCHECK(base_ptr_ == NULL);
@@ -66,6 +68,22 @@ bool BufferPool::Init(Session* session,
     return false;
   }
 
+  // Duplicate the mapping handle into the client process.
+  HANDLE client_mapping = NULL;
+  if (!::DuplicateHandle(::GetCurrentProcess(),
+                         new_handle,
+                         client_process_handle,
+                         &client_mapping,
+                         0,
+                         FALSE,
+                         DUPLICATE_SAME_ACCESS)) {
+    DWORD error = ::GetLastError();
+    LOG(ERROR) << "Failed to copy shared memory handle into client process: "
+               << com::LogWe(error) << ".";
+    ignore_result(::UnmapViewOfFile(new_base_ptr));
+    return false;
+  }
+
   // Take ownership of the newly created resources.
   handle_.Set(new_handle.Take());
   base_ptr_ = new_base_ptr;
@@ -75,28 +93,17 @@ bool BufferPool::Init(Session* session,
   for (size_t i = 0; i < num_buffers; ++i) {
     Buffer& cb = buffers_[i];
     size_t offset = i * buffer_size;
-    cb.shared_memory_handle = NULL;
+    cb.shared_memory_handle = reinterpret_cast<unsigned long>(client_mapping);
     cb.mapping_size = mapping_size;
     cb.buffer_offset = offset;
     cb.buffer_size = buffer_size;
     cb.session = session;
     cb.data_ptr = base_ptr_ + offset;
-    cb.state = Buffer::kAvailable;
+    cb.write_is_pending = false;
   }
 
   return true;
 }
 
-void BufferPool::SetClientHandle(HANDLE client_handle) {
-  DCHECK(client_handle != NULL);
-
-  for (size_t i = 0; i < buffers_.size(); ++i) {
-    Buffer& cb = buffers_[i];
-    DCHECK_EQ(Buffer::kAvailable, cb.state);
-    DCHECK(cb.shared_memory_handle == NULL);
-    cb.shared_memory_handle = reinterpret_cast<unsigned long>(client_handle);
-  }
-}
-
-}  // namespace service
-}  // namespace trace
+}  // namespace call_trace::service
+}  // namespace call_trace

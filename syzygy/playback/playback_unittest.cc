@@ -34,13 +34,11 @@ using testing::GetExeRelativePath;
 using testing::GetExeTestDataRelativePath;
 using testing::Return;
 
-using trace::parser::ParseEventHandler;
+using call_trace::parser::ParseEventHandler;
 
 class MockParseEventHandler : public testing::StrictMock<ParseEventHandler> {
  public:
-  MOCK_METHOD3(OnProcessStarted, void(base::Time,
-                                      DWORD,
-                                      const TraceSystemInfo*));
+  MOCK_METHOD2(OnProcessStarted, void(base::Time, DWORD));
   MOCK_METHOD2(OnProcessEnded, void(base::Time, DWORD));
   MOCK_METHOD4(OnFunctionEntry, void(base::Time, DWORD, DWORD,
                const TraceEnterExitEventData*));
@@ -57,7 +55,7 @@ class MockParseEventHandler : public testing::StrictMock<ParseEventHandler> {
   MOCK_METHOD4(OnThreadDetach, void(base::Time, DWORD, DWORD,
                const TraceModuleData*));
   MOCK_METHOD5(OnInvocationBatch, void(base::Time, DWORD, DWORD,
-               size_t, const TraceBatchInvocationInfo*));
+               size_t, const InvocationInfoBatch*));
 };
 
 class PlaybackTest : public testing::PELibUnitTest {
@@ -133,7 +131,7 @@ TEST_F(PlaybackTest, ConsumeCallTraceEvents) {
   EXPECT_TRUE(Init());
   EXPECT_TRUE(playback_->Init(&input_dll_, &image_layout_, parser_.get()));
 
-  EXPECT_CALL(*parse_event_handler_, OnProcessStarted(_, _, _)).Times(4);
+  EXPECT_CALL(*parse_event_handler_, OnProcessStarted(_, _)).Times(4);
   EXPECT_CALL(*parse_event_handler_, OnProcessEnded(_, _)).Times(4);
   EXPECT_CALL(*parse_event_handler_, OnFunctionEntry(_, _, _, _)).Times(0);
   EXPECT_CALL(*parse_event_handler_, OnFunctionExit(_, _, _, _)).Times(0);

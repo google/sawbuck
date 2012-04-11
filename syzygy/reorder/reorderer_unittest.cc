@@ -24,13 +24,13 @@
 
 namespace reorder {
 
+using call_trace::parser::ParseEngine;
+using call_trace::parser::Parser;
 using testing::_;
 using testing::DoAll;
 using testing::InSequence;
 using testing::InvokeWithoutArgs;
 using testing::Return;
-using trace::parser::ParseEngine;
-using trace::parser::Parser;
 
 namespace {
 
@@ -169,7 +169,7 @@ bool TestParseEngine::ConsumeAllEvents() {
 
   // Simulate a process starting.
   base::Time time = base::Time::Now();
-  event_handler_->OnProcessStarted(time, kProcessId, NULL);
+  event_handler_->OnProcessStarted(time, kProcessId);
 
   sym_util::ModuleInformation dll_info = {};
   const PEFile::Signature& sig = reorderer_->instr_signature();

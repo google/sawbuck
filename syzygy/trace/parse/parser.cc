@@ -21,7 +21,7 @@
 #include "syzygy/trace/parse/parse_engine_etw.h"
 #include "syzygy/trace/parse/parse_engine_rpc.h"
 
-namespace trace {
+namespace call_trace {
 namespace parser {
 
 Parser::Parser() : active_parse_engine_(NULL) {
@@ -137,5 +137,5 @@ bool Parser::SetActiveParseEngine(const FilePath& trace_file_path) {
   return false;
 }
 
-}  // namespace trace::parser
-}  // namespace trace
+}  // namespace call_trace::parser
+}  // namespace call_trace

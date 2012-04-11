@@ -1,4 +1,4 @@
-# Copyright 2012 Google Inc.
+# Copyright 2011 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,10 +34,6 @@
         'pdb_constants.h',
         'pdb_data.cc',
         'pdb_data.h',
-        'pdb_dump.cc',
-        'pdb_dump.h',
-        'pdb_file.cc',
-        'pdb_file.h',
         'pdb_file_stream.cc',
         'pdb_file_stream.h',
         'pdb_reader.cc',
@@ -55,22 +51,12 @@
       ],
     },
     {
-      'target_name': 'pdb_unittest_utils',
-      'type': 'static_library',
-      'sources': [
-        'unittest_util.cc',
-        'unittest_util.h',
-      ],
-    },
-    {
       'target_name': 'pdb_unittests',
       'type': 'executable',
       'sources': [
         'omap_unittest.cc',
         'pdb_byte_stream_unittest.cc',
         'pdb_file_stream_unittest.cc',
-        'pdb_file_unittest.cc',
-        'pdb_dump_unittest.cc',
         'pdb_reader_unittest.cc',
         'pdb_stream_unittest.cc',
         'pdb_util_unittest.cc',
@@ -79,18 +65,11 @@
       ],
       'dependencies': [
         'pdb_lib',
-        'pdb_unittest_utils',
         '<(DEPTH)/base/base.gyp:base',
         '<(DEPTH)/syzygy/block_graph/block_graph.gyp:block_graph_lib',
         '<(DEPTH)/syzygy/core/core.gyp:core_lib',
         '<(DEPTH)/syzygy/core/core.gyp:core_unittest_utils',
-        '<(DEPTH)/syzygy/pe/pe.gyp:pe_unittest_utils',
-        '<(DEPTH)/syzygy/test_data/test_data.gyp:test_dll',
-        '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
-      ],
-      'libraries': [
-        'imagehlp.lib',
       ],
     },
     {
@@ -102,7 +81,6 @@
       'dependencies': [
         'pdb_lib',
         '<(DEPTH)/base/base.gyp:base',
-        '<(DEPTH)/syzygy/common/common.gyp:common_lib',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
     },
