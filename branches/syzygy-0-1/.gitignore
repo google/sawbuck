@@ -1,0 +1,69 @@
+# Copyright 2011 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Ignore GYP artifacts.
+*.sln
+*.suo
+*.ncb
+*.vcproj
+*.user
+*.rules
+
+# Ignore compiled Python files.
+*.pyc
+
+# Ignore build output directories
+/sawbuck/Debug/
+/sawbuck/Release/
+/sawbuck/py/etw/build/
+
+/sawdust/Debug/
+/sawdust/Release/
+
+/syzygy/Debug/
+/syzygy/Release/
+
+# Ignore doxygen output.
+/syzygy/doc/
+
+# Ignore directories gclient syncs.
+/base/
+/build/
+/syzygy/internal
+
+/googleurl/
+/skia/
+/testing/
+/third_party/coverage_analyzer/
+/third_party/distorm/
+/third_party/icu/
+/third_party/libevent/
+/third_party/libjpeg/
+/third_party/modp_b64/
+/third_party/nss/
+/third_party/platformsdk_win7/
+/third_party/psyco_win32/
+/third_party/python_26/
+/third_party/skia/
+/third_party/sqlite/
+/third_party/vsssdk72/
+/third_party/wtl/
+/third_party/zlib/
+/tools/
+
+# Ignore SVN metadata.
+.svn/
+
+# Ignore Python build artifacts
+*.egg-info/
