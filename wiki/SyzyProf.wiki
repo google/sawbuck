@@ -1,4 +1,4 @@
-#summary SyzyProf is an instrumenting hierarchical performanc profiler for Chrome
+#summary SyzyProf is an instrumenting hierarchical performance profiler for Chrome
 
 = Introduction =
 
