@@ -17,6 +17,7 @@ SyzyProf generates output files that are compatible with [http://kcachegrind.sou
 
 To use SyzyProf, you must:
   1. Download and install the [http://code.google.com/p/sawbuck/downloads/list?can=2&q=syzyprof latest SyzyProf installer].
+  1. Launch a SyzyProf shell from the SyzyProf folder in the start menu.
   1. Instrument your Chrome or Chromium build.
   1. Launch the call trace service.
   1. Run the instrumented Chrome instance.
@@ -36,10 +37,15 @@ A profiling session might go like this:
 > kcachegrind.exe chrome.callgrind
 }}}
 
+== Screenshot ==
+
 This will open the callgrind file in KCacheGrind (or QCacheGrind) which will look something like this:
 
 http://sawbuck.googlecode.com/files/chrome-calltrace.png
 
+Some things to note about this screenshot are:
+  * The call graph is presented visually, with the costliest calls highlighted.
+  * The SyzyProf Grinder outputs a profile part per thread. This means that for any given function, you can view at its cost in an individual thread, across a selection of multiple threads, or across all threads in a process.
 
 == Caveats ==
 
