@@ -18,7 +18,6 @@ SyzyProf generates output files that are compatible with [http://kcachegrind.sou
 To use SyzyProf, you must:
   1. Download and install the [http://code.google.com/p/sawbuck/downloads/list?can=2&q=syzyprof latest SyzyProf installer].
   1. Download and uncompress [http://sourceforge.net/projects/precompiledbin/files/kcachegrind.zip/download the KCacheGrind zip archive]. If you work at Google, you can instead download [https://goto.google.com/qcachegrind-win this (newer) version of QCacheGrind, pre-built for Windows].
-
   1. Launch a SyzyProf shell from the SyzyProf folder in the start menu.
   1. Instrument your Chrome or Chromium build.
   1. Launch the call trace service.
