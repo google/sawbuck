@@ -36,6 +36,13 @@ A profiling session might go like this:
 > kcachegrind.exe chrome.callgrind
 }}}
 
+This will open the callgrind file in KCacheGrind (or QCacheGrind) which will look something like this:
+
+http://sawbuck.googlecode.com/files/chrome-calltrace.png
+
+
+== Caveats ==
+
 Note that SyzyProf needs the binary to be linked with the "/PROFILE" flag set, and that SyzyProf cannot at the present time instrument official Chrome binaries for boring reasons that will eventually be remedied.
 
 == How does it work? ==
