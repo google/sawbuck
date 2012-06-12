@@ -47,7 +47,9 @@ http://sawbuck.googlecode.com/files/chrome-calltrace.png
 
 Some things to note about this screenshot are:
   * The call graph is presented visually, with the costliest calls highlighted.
-  * The SyzyProf Grinder outputs a profile part per thread. This means that for any given function, you can view at its cost in an individual thread, across a selection of multiple threads, or across all threads in a process.
+  * The SyzyProf Grinder outputs a profile part per thread. This means that for any given function, you can view its cost in an individual thread, across a selection of multiple threads, or across all threads in a process.
+  * If you're profiling a locally built version of Chrome, you'll be able to view the sources [http://kcachegrind.sourceforge.net/html/Shot4.html annotated with profiling data].
+  * QCacheGrind *rocks*.
 
 == Caveats ==
 
