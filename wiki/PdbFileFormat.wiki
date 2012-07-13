@@ -164,6 +164,9 @@ Offset table : 5*32 bits :
 
 ===Modules===
 <p>Those stream IDs can be found in the DBI stream.
+<br>The first field encountered in this stream is a 4 bytes value indicating it's type, the expected value is C13 (4).
+<br>After this we have a symbol table. The size of this table is located in the information that we got for this stream in the DBI stream. This is the same type of table as the one we find in the symbol record stream.
+<br>The line information is arranged as a back-to-back run of {type, len} prefixed chunks. The types are DEBUG_S_FILECHKSMS and DEBUG_S_LINES. The first of these provides file names and a file content checksum, where each record is identified by its index into its chunk (excluding type and len). The other one consist of a bunch of CV_SourceFile structures.
 
 ===Section header===
 <p>Not encountered yet.
