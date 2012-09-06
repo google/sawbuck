@@ -19,7 +19,7 @@ Once this is done, you can fetch the sources by doing:
 {{{
 > mkdir Syzygy
 > cd Syzygy
-> gclient config http://sawbuck.googlecode.com/svn/trunk/
+> gclient config http://sawbuck.googlecode.com/svn/trunk/ --name=src
 > gclient sync
 }}}
 After this completes, you can open the main solution file at {{{src\syzygy\syzygy.sln}}} and build it.
