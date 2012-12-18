@@ -34,7 +34,7 @@ A profiling session might go like this:
 > chrome-win32\chrome.exe --user-data-dir=c:\temp\killmenow
     ... time passes ...
 > call_trace_service.exe stop
-> grinder.exe --output-file=chrome.callgrind traces\*.bin 
+> grinder.exe --mode=profile --output-file=chrome.callgrind traces\*.bin 
 > kcachegrind.exe chrome.callgrind
 }}}
 
