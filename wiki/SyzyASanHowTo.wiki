@@ -16,18 +16,18 @@ You can get the latest version of our tools [http://sawbuck.googlecode.com/svn/t
 
 ==Instrument a binary.==
 
-To instrument a binary you need to use the 'instrument.exe' executable provided by syzygy. 
+To instrument a binary you need to use the 'instrument.exe' executable provided by syzygy.  
 
 You binary should be a Win32 PE binary linked with the /PROFILE flag. The command line to do the instrumentation is the following:
 {{{
-instrument.exe --mode=asan --input-image=YourProgram.exe --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.exe --output-pdb=(optionnal)OutputPdb.pdb
+instrument.exe --mode=asan --input-image=YourProgram.(exe/dll) --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.(exe/dll) --output-pdb=(optionnal)OutputPdb.pdb
 }}}
 
 You can add the --overwrite flag to allow output files to be overwritten.
 
 ==Run the instrumented binary.==
 
-Before running the instrumented binary you first should copy the asan_rtl.dll file to the current directory (or to a directory present in your path), then you can simply start the instrumented binary from a command prompt. By default the error reports are printed into the console. If you're instrumenting chrome.dll you might be interested to use our logger to get the stack traces out of the sandboxed processes (i.e. the renderer).
+Before running the instrumented binary you first should copy the asan_rtl.dll file to a directory in the DLL search path for the instrumented binary (the same directory as the binary or a directory in the binary's PATH). Then you can simply start the instrumented binary from a command prompt. By default the error reports are printed into the console. If you are instrumenting chrome.dll you might be interested to use our logger to get the stack traces out of the sandboxed processes (i.e. the renderer).
 
 ===Use the logger===
 
@@ -100,11 +100,11 @@ You can distinguish several parts on this report:
 
 If you run the instrumented binary under Windbg it'll automatically break when a memory error is detected. To do this prefix your command line with 'windbg -o -G -c ".ocommand ASAN" (presuming windbg is in your path).
 
-A report similar to the previous one will be printed into the Windbg command prompt. In this report you'll see a line containing 'Caller's context ("context address") and stack trace:', you can then use the command 'cxr "context address"' to switch to the context when the bad access has been made.
+A report similar to the previous one will be printed into the Windbg command prompt. In this report you will see a line containing 'Caller's context ("context address") and stack trace:', you can then use the command 'cxr "context address"' to switch to the context when the bad access has been made.
 
 ==Report an error==
 
-If you've find an error in Chrome or in SyzyAsan please fill a bug report on the appropriate project.
+If you have find an error in Chrome or in SyzyAsan please fill a bug report on the appropriate project.
 
 ===File a bug on SyzyASan.===
 
@@ -112,4 +112,4 @@ Go to [https://code.google.com/p/sawbuck/issues/list] and report a new issue. Us
 
 ===File a bug on Chromium.===
 
-Go to [http://crbug.com/new] and fill a new bug. Paste the full SyzyASan into it and indicate which version of Chrome (or Chromium) you're using. Please provide as much information as possible to help us to reproduce the bug. Please put syzygy-team@google.com in cc to this bug report.
+Go to [http://crbug.com/new] and fill a new bug. Paste the full SyzyASan report into it and indicate which version of Chrome (or Chromium) you are using. Please provide as much information as possible to help us to reproduce the bug. Please put syzygy-team@google.com in copy to this bug report.
