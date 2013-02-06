@@ -1,0 +1,115 @@
+#summary SyzyASan: This document describes how to use SyzyASan.
+
+<wiki:toc max_depth="3" />
+
+=SyzyASan workflow=
+
+The typical SyzyASan workflow is the following:
+  * Instrument the target binary.
+  * Run the instrumented binary.
+  * Wait for a memory error to be found !
+  * Report/fix the memory error.
+
+You can get the latest version of our tools [http://sawbuck.googlecode.com/svn/trunk/syzygy/binaries/exe/ here].
+
+=How-to=
+
+==Instrument a binary.==
+
+To instrument a binary you need to use the 'instrument.exe' executable provided by syzygy. 
+
+You binary should be a Win32 PE binary linked with the /PROFILE flag. The command line to do the instrumentation is the following:
+{{{
+instrument.exe --mode=asan --input-image=YourProgram.exe --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.exe --output-pdb=(optionnal)OutputPdb.pdb
+}}}
+
+You can add the --overwrite flag to allow output files to be overwritten.
+
+==Run the instrumented binary.==
+
+Before running the instrumented binary you first should copy the asan_rtl.dll file to the current directory (or to a directory present in your path), then you can simply start the instrumented binary from a command prompt. By default the error reports are printed into the console. If you're instrumenting chrome.dll you might be interested to use our logger to get the stack traces out of the sandboxed processes (i.e. the renderer).
+
+===Use the logger===
+
+You just need to prefix your executable command line by 'logger.exe start --arguments -- '. Run 'logger.exe' to get the list of the available arguments.
+
+===Environment variable===
+
+You can set the environment variable ASAN_OPTIONS to give a command line to Asan runtime. The available arguments are:
+  * quarantine_size : The default size of the quarantine of the HeapProxy, in bytes.
+  * reporting_period : The number of allocations between reports of the stack trace cache compression ratio.
+
+==Interpret the error report.==
+
+Here is an example of a SyzyASan error report:
+
+{{{
+SyzyASAN error: heap-buffer-underflow on address 0x002F733F
+READ of size 4 at 0x00270026
+Backtrace:
+        f [0x00E1105B+41] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:86)
+        e [0x00E110B4+12] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:91)
+        d [0x00E110CF+12] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:95)
+        c [0x00E110EA+12] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:99)
+        b [0x00E11105+12] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:103)
+        a [0x00E11120+12] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:107)
+        main [0x00E11153+26] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:112)
+        __tmainCRTStartup [0x00E11494+267] (f:\dd\vctools\crt_bld\self_x86\crt\src\crt0.c:278)
+        BaseThreadInitThunk [0x74A033AA+18]
+        RtlInitializeExceptionChain [0x76FB9EF2+99]
+        RtlInitializeExceptionChain [0x76FB9EC5+54]
+0x002F733F is located 1 bytes to the left of 4-bytes region [0x002F7340,0x002F7344)
+previously allocated here:
+Backtrace:
+        agent::asan::HeapProxy::Alloc [0x0FEEAD08+216] (d:\src\syzygy\src\syzygy\agent\asan\asan_heap.cc:178)
+        asan_HeapAlloc [0x0FEE7497+167] (d:\src\syzygy\src\syzygy\agent\asan\asan_rtl_impl.cc:97)
+        malloc [0x00E112EF+75] (f:\dd\vctools\crt_bld\self_x86\crt\src\malloc.c:89)
+        main [0x00E11130+11] (c:\src\testsprojects\testasan\testasan\testasan\asan_test_program.cc:111)
+        __tmainCRTStartup [0x00E11494+267] (f:\dd\vctools\crt_bld\self_x86\crt\src\crt0.c:278)
+        BaseThreadInitThunk [0x74A033AA+18]
+        RtlInitializeExceptionChain [0x76FB9EF2+99]
+        RtlInitializeExceptionChain [0x76FB9EC5+54]
+Shadow byte and word:
+  0x002f733f: ff
+  0x002f7300: ff ff ff 00 ff ff ff ff
+More shadow bytes:
+  0x002f7200: ff 00 00 05 ff ff ff ff
+  0x002f7240: ff 00 ff ff ff ff 00 00
+  0x002f7280: 02 ff ff ff ff ff 00 ff
+  0x002f72c0: ff ff ff 00 00 00 ff ff
+=>0x002f7300: ff ff ff 00 ff ff ff ff
+  0x002f7340: 04 ff ff ff ff ff ff ff
+  0x002f7380: 00 00 00 00 00 00 00 00
+  0x002f73c0: 00 00 00 00 00 00 00 00
+  0x002f7400: 00 00 00 00 00 00 00 00
+}}}
+
+You can distinguish several parts on this report:
+  * The error type and and address of the memory access. The current supported errors are:
+    * Use-after-free.
+    * Heap-buffer-over/underflow.
+    * Double-free.
+  * The mode and the size of the access.
+  * The stack trace when the bad access has been made.
+  * (If available) The relative position of the access in its memory block.
+  * (If available) The allocation stack trace of the memory block containing this address. This stack trace might be incomplete.
+  * (If available) The free stack trace of the memory block containing this address. This stack trace might be incomplete.
+  * The state of the shadow memory around this location.
+
+===Use WinDbg to get more details about the error.===
+
+If you run the instrumented binary under Windbg it'll automatically break when a memory error is detected. To do this prefix your command line with 'windbg -o -G -c ".ocommand ASAN" (presuming windbg is in your path).
+
+A report similar to the previous one will be printed into the Windbg command prompt. In this report you'll see a line containing 'Caller's context ("context address") and stack trace:', you can then use the command 'cxr "context address"' to switch to the context when the bad access has been made.
+
+==Report an error==
+
+If you've find an error in Chrome or in SyzyAsan please fill a bug report on the appropriate project.
+
+===File a bug on SyzyASan.===
+
+Go to [https://code.google.com/p/sawbuck/issues/list] and report a new issue. Use the 'Syzygy report' template. Please provide as much details as possible.
+
+===File a bug on Chromium.===
+
+Go to [http://crbug.com/new] and fill a new bug. Paste the full SyzyASan into it and indicate which version of Chrome (or Chromium) you're using. Please provide as much information as possible to help us to reproduce the bug. 
