@@ -18,7 +18,7 @@ You can get the latest version of our tools [http://sawbuck.googlecode.com/svn/t
 
 To instrument a binary you need to use the 'instrument.exe' executable provided by syzygy.  
 
-You binary should be a Win32 PE binary linked with the /PROFILE flag. The command line to do the instrumentation is the following:
+You binary should be a Win32 PE binary linked with the /PROFILE flag and statically linked to the CRT. The command line to do the instrumentation is the following:
 {{{
 instrument.exe --mode=asan --input-image=YourProgram.(exe/dll) --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.(exe/dll) --output-pdb=(optionnal)OutputPdb.pdb
 }}}
@@ -36,7 +36,7 @@ You just need to prefix your executable command line by 'logger.exe start --argu
 ===Environment variable===
 
 You can set the environment variable ASAN_OPTIONS to give a command line to Asan runtime. The available arguments are:
-  * quarantine_size : The default size of the quarantine of the HeapProxy, in bytes.
+  * quarantine_size : The default size of the quarantine of the <nop>HeapProxy, in bytes.
   * reporting_period : The number of allocations between reports of the stack trace cache compression ratio.
 
 ==Interpret the error report.==
@@ -96,7 +96,7 @@ You can distinguish several parts on this report:
   * (If available) The free stack trace of the memory block containing this address. This stack trace might be incomplete.
   * The state of the shadow memory around this location.
 
-===Use WinDbg to get more details about the error.===
+===Use <nop>WinDbg to get more details about the error.===
 
 If you run the instrumented binary under Windbg it'll automatically break when a memory error is detected. To do this prefix your command line with 'windbg -o -G -c ".ocommand ASAN" (presuming windbg is in your path).
 
@@ -104,7 +104,7 @@ A report similar to the previous one will be printed into the Windbg command pro
 
 ==Report an error==
 
-If you have find an error in Chrome or in SyzyAsan please fill a bug report on the appropriate project.
+If you have find an error in Chrome or in SyzyASan please fill a bug report on the appropriate project.
 
 ===File a bug on SyzyASan.===
 
