@@ -36,7 +36,7 @@ You just need to prefix your executable command line by 'logger.exe start --argu
 ===Environment variable===
 
 You can set the environment variable ASAN_OPTIONS to give a command line to Asan runtime. The available arguments are:
-  * quarantine_size : The default size of the quarantine of the <nop>HeapProxy, in bytes.
+  * quarantine_size : The default size of the quarantine of the HeapProxy, in bytes.
   * reporting_period : The number of allocations between reports of the stack trace cache compression ratio.
 
 ==Interpret the error report.==
@@ -96,7 +96,7 @@ You can distinguish several parts on this report:
   * (If available) The free stack trace of the memory block containing this address. This stack trace might be incomplete.
   * The state of the shadow memory around this location.
 
-===Use <nop>WinDbg to get more details about the error.===
+===Use WinDbg to get more details about the error.===
 
 If you run the instrumented binary under Windbg it'll automatically break when a memory error is detected. To do this prefix your command line with 'windbg -o -G -c ".ocommand ASAN" (presuming windbg is in your path).
 
