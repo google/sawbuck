@@ -1,0 +1,64 @@
+#summary I've been assigned a SyzyASAN bug, what do I do?
+
+= I've been assigned a SyzyASAN bug, what do I do? =
+
+== 1. Make sure you try to reproduce with a SyzyASAN build. ==
+
+First of all, your life will be much easier if you reproduce the bug with a SyzyASAN instrumented version of Chrome. You can tell if your version of Chrome is instrumented with SyzyASAN if `dumpbin /imports` shows a dependency on `asan_rtl.dll`. Also, the version number will be w.x.y.z, where z > 0.
+
+=== Instrumenting your own build. ===
+
+If you are unable to get ahold of the latest SyzyASAN instrumented canary you can always instrument Chromium yourself. The latest Syzygy binaries are included in `third_party\syzygy\binaries\exe`. Once you've built `chrome.dll` you can instrument it using:
+
+{{{
+instrument.exe --mode=asan --input-image=path\to\chrome.dll --output-image=path\to\another\chrome.dll --debug-friendly
+}}}
+
+Replace your original `chrome.dll` with the instrumented one, and make sure that `asan_rtl.dll` is alongside it.
+
+*NOTE:* You can't instrument Debug builds right now due to incremental linking being enabled. Easiest is to use a Release build, but if you want a Debug build you have to disable incremental linking and enable profile information (`/PROFILE`). This is not directly supported right now, but you can get this behaviour through judicious GYP file tweaking.
+
+== 2. Get an existing minidump if you can. ==
+
+You will more than likely have a minidump from [http://go/crash] (Google internal only), or if the bug originated from !ClusterFuzz. Otherwise, you'll have to try to use the information in the bug to reproduce it.
+
+== 3. Explore the minidump or a running process. ==
+
+If you're using a minidump you can open it directly in !WinDbg and you'll immediately be placed into the frame where the exception was raised. You can get detailed information about the crash, and hopefully this will be useful in finding a repro or providing insight into a fix.
+
+{{{
+# Print the stack trace associated with the crash. This should start in 
+# system libraries, and go through asan_rtl.dll.
+> kn
+
+# Find the "asan_rtl!agent::asan::AsanRuntime::OnError" frame in the 
+# previous stack trace and make it the current frame.
+> .frame %FRAME_NUMBER_IN_HEX%
+
+# Dump the error info associated with the crash.
+> dt error_info
+
+# Dump the stack trace associated with the allocation.
+> dps @@(error_info->alloc_stack) L@@(error_info->alloc_stack_size)
+
+# Dump the stack trace associated with the free.
+> dps @@(error_info->free_stack) L@@(error_info->free_stack_size)
+
+# Switch contexts to the exception record in the minidump.
+> .excr
+
+# Dump the stack trace associated with the ASAN error.
+> kv
+}}}
+
+The minidump will automatically grab some regions of memory so you may have access to the actual object that was used-after-free, or other data structures. SyzyASAN will preserve the contents of the object so you may be able to glean information from it.
+
+== 4. Find a reproduction. ==
+
+If the bug has been found by !ClusterFuzz you're in luck, as there will be a nice self-contained way to reproduce it.
+
+Otherwise it's up to you to find a way to reproduce the bug. The bug report should include information to help you do this, but there's no magic recipe here. You'll know you've got a reproduction when you see `asan_rtl` in the stack of the exception, and you see alloc/free stack traces that match the bug.
+
+== 5. Fix it! ==
+
+This is up to you! If we could automate this, we would!
