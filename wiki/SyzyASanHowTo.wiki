@@ -115,4 +115,4 @@ Go to [https://code.google.com/p/sawbuck/issues/list] and report a new issue. Us
 
 ===File a bug on Chromium.===
 
-Go to [http://crbug.com/new] and fill a new bug. Paste the full SyzyASan report into it and indicate which version of Chrome (or Chromium) you are using. Please provide as much information as possible to help us to reproduce the bug. Please put syzygy-team@google.com in copy to this bug report.
+Go to [http://crbug.com/new] and fill a new bug. Paste the full SyzyASan report into it and indicate which version of Chrome (or Chromium) you are using. Please provide as much information as possible to help us to reproduce the bug. Please put syzygy-team@chromium.org in copy to this bug report.
