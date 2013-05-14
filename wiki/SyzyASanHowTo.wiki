@@ -20,7 +20,7 @@ To instrument a binary you need to use the 'instrument.exe' executable provided 
 
 You binary should be a Win32 PE binary linked with the /PROFILE flag and statically linked to the CRT. The command line to do the instrumentation is the following:
 {{{
-instrument.exe --mode=asan --input-image=YourProgram.(exe/dll) --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.(exe/dll) --output-pdb=(optionnal)OutputPdb.pdb
+instrument.exe --mode=asan --input-image=YourProgram.(exe/dll) --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.(exe/dll) --output-pdb=(optionnal)OutputPdb.pdb --debug-friendly
 }}}
 
 You can add the --overwrite flag to allow output files to be overwritten.
