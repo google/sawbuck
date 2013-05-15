@@ -60,6 +60,11 @@ The minidump will automatically grab some regions of memory so you may have acce
 
 First of all, your life will be much easier if you reproduce the bug with a SyzyASAN instrumented version of Chrome. You can tell if your version of Chrome is instrumented with SyzyASAN if `dumpbin /imports` shows a dependency on `asan_rtl.dll`. Also, the version number will be w.x.y.z, where z > 0.
 
+In recent SyzyASAN builds you'll also see SyzyASAN mentioned in the version string in e.g. chrome://version, as so:
+{{{
+Google Chrome	29.0.1507.2 (Official Build 199891) canary SyzyASan
+}}}
+
 === 4. Instrumenting your own build. ===
 
 If you are unable to get ahold of the latest SyzyASAN instrumented canary you can always instrument Chromium yourself. The latest Syzygy binaries are included in `third_party\syzygy\binaries\exe`. Once you've built `chrome.dll` you can instrument it using:
@@ -71,7 +76,6 @@ instrument.exe --mode=asan --input-image=path\to\chrome.dll --output-image=path\
 Replace your original `chrome.dll` with the instrumented one, and make sure that `asan_rtl.dll` is alongside it.
 
 *NOTE:* You can't instrument Debug builds right now due to incremental linking being enabled. Easiest is to use a Release build, but if you want a Debug build you have to disable incremental linking and enable profile information (`/PROFILE`). This is not directly supported right now, but you can get this behaviour through judicious GYP file tweaking.
-
 
 == 5. Find a reproduction. ==
 
