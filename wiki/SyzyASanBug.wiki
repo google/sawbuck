@@ -2,27 +2,30 @@
 
 = I've been assigned a SyzyASAN bug, what do I do? =
 
-== 1. Make sure you try to reproduce with a SyzyASAN build. ==
+== 1. Get an existing minidump if you can. ==
 
-First of all, your life will be much easier if you reproduce the bug with a SyzyASAN instrumented version of Chrome. You can tell if your version of Chrome is instrumented with SyzyASAN if `dumpbin /imports` shows a dependency on `asan_rtl.dll`. Also, the version number will be w.x.y.z, where z > 0.
+You will more than likely have a minidump from [http://go/crash] (Google internal only), or if the bug originated from !ClusterFuzz. 
+If you haven't already, set up your symbol path and source paths. This will allow your debugger to automagically retrieve appropriate symbols and source code as you peruse the crash dump.
 
-=== Instrumenting your own build. ===
-
-If you are unable to get ahold of the latest SyzyASAN instrumented canary you can always instrument Chromium yourself. The latest Syzygy binaries are included in `third_party\syzygy\binaries\exe`. Once you've built `chrome.dll` you can instrument it using:
-
+You can do this by running something like this in a command line shell - you only need to do this once per machine/user account.
 {{{
-instrument.exe --mode=asan --input-image=path\to\chrome.dll --output-image=path\to\another\chrome.dll --debug-friendly
+mkdir %TEMP%\srcsrv
+setx _NT_SOURCE_PATH "SRV*%TEMP%\srcsrv"
+set _NT_SOURCE_PATH=SRV*%TEMP%\srcsrv
+
+mkdir %TEMP%\symbols\google
+mkdir %TEMP%\symbols\microsoft
+
+setx _NT_SYMBOL_PATH "SRV*%TEMP%\symbols\google*http://chromium-browser-symsrv.commondatastorage.googleapis.com;SRV*%TEMP%\symbols\microsoft*http://msdl.microsoft.com/download/symbols"
+
+set _NT_SYMBOL_PATH=SRV*%TEMP%\symbols\google*http://chromium-browser-symsrv.commondatastorage.googleapis.com;SRV*%TEMP%\symbols\microsoft*http://msdl.microsoft.com/download/symbols
 }}}
 
-Replace your original `chrome.dll` with the instrumented one, and make sure that `asan_rtl.dll` is alongside it.
+We like to use Windbg  
 
-*NOTE:* You can't instrument Debug builds right now due to incremental linking being enabled. Easiest is to use a Release build, but if you want a Debug build you have to disable incremental linking and enable profile information (`/PROFILE`). This is not directly supported right now, but you can get this behaviour through judicious GYP file tweaking.
+Otherwise, you'll have to try to use the information in the bug to reproduce it.
 
-== 2. Get an existing minidump if you can. ==
-
-You will more than likely have a minidump from [http://go/crash] (Google internal only), or if the bug originated from !ClusterFuzz. Otherwise, you'll have to try to use the information in the bug to reproduce it.
-
-== 3. Explore the minidump or a running process. ==
+== 2. Explore the minidump or a running process. ==
 
 If you're using a minidump you can open it directly in !WinDbg and you'll immediately be placed into the frame where the exception was raised. You can get detailed information about the crash, and hopefully this will be useful in finding a repro or providing insight into a fix.
 
@@ -53,7 +56,24 @@ If you're using a minidump you can open it directly in !WinDbg and you'll immedi
 
 The minidump will automatically grab some regions of memory so you may have access to the actual object that was used-after-free, or other data structures. SyzyASAN will preserve the contents of the object so you may be able to glean information from it.
 
-== 4. Find a reproduction. ==
+== 3. Make sure you try to reproduce with a SyzyASAN build. ==
+
+First of all, your life will be much easier if you reproduce the bug with a SyzyASAN instrumented version of Chrome. You can tell if your version of Chrome is instrumented with SyzyASAN if `dumpbin /imports` shows a dependency on `asan_rtl.dll`. Also, the version number will be w.x.y.z, where z > 0.
+
+=== 4. Instrumenting your own build. ===
+
+If you are unable to get ahold of the latest SyzyASAN instrumented canary you can always instrument Chromium yourself. The latest Syzygy binaries are included in `third_party\syzygy\binaries\exe`. Once you've built `chrome.dll` you can instrument it using:
+
+{{{
+instrument.exe --mode=asan --input-image=path\to\chrome.dll --output-image=path\to\another\chrome.dll --debug-friendly
+}}}
+
+Replace your original `chrome.dll` with the instrumented one, and make sure that `asan_rtl.dll` is alongside it.
+
+*NOTE:* You can't instrument Debug builds right now due to incremental linking being enabled. Easiest is to use a Release build, but if you want a Debug build you have to disable incremental linking and enable profile information (`/PROFILE`). This is not directly supported right now, but you can get this behaviour through judicious GYP file tweaking.
+
+
+== 5. Find a reproduction. ==
 
 If the bug has been found by !ClusterFuzz you're in luck, as there will be a nice self-contained way to reproduce it.
 
