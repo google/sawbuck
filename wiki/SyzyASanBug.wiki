@@ -45,7 +45,7 @@ If you're using a minidump you can open it directly in !WinDbg and you'll immedi
 > dps @@(error_info->free_stack) L@@(error_info->free_stack_size)
 
 # Switch contexts to the exception record in the minidump.
-> .excr
+> .ecxr
 
 # Dump the stack trace associated with the ASAN error.
 > kv
