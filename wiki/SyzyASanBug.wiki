@@ -34,18 +34,18 @@ If you're using a minidump you can open it directly in !WinDbg and you'll immedi
 # system libraries, and go through asan_rtl.dll.
 > kn
 
-# Find the "asan_rtl!agent::asan::AsanRuntime::OnError" frame in the 
+# Find the "asan_rtl!agent::asan::ReportBadMemoryAccess" frame in the 
 # previous stack trace and make it the current frame.
 > .frame %FRAME_NUMBER_IN_HEX%
 
 # Dump the error info associated with the crash.
-> dt error_info
+> dt bad_access_info
 
 # Dump the stack trace associated with the allocation.
-> dps @@(error_info->alloc_stack) L@@(error_info->alloc_stack_size)
+> dps @@(bad_access_info->alloc_stack) L@@(bad_access_info->alloc_stack_size)
 
 # Dump the stack trace associated with the free.
-> dps @@(error_info->free_stack) L@@(error_info->free_stack_size)
+> dps @@(bad_access_info->free_stack) L@@(bad_access_info->free_stack_size)
 
 # Switch contexts to the exception record in the minidump.
 > .ecxr
