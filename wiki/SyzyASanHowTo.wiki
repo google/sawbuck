@@ -42,6 +42,8 @@ You can set the environment variable SYZYGY_ASAN_OPTIONS to give a command line 
   * ignored_stack_ids : The list of ignored stack ids, we expect the value to be in hexadecimal format and separated by a semi-colon (i.e. 0xABABABAB;0x01234567;0xaabbaabb). The stack id is at the beginning of a SyzyASan error report. Keep in mind that the stack ids are relative to a particular build.
   * bottom_frames_to_skip : The number of bottom frames to skip on a stack trace (default to 0).
   * exit_on_failure : Indicates if we should just exit on error rather than calling the error handler (default to false).
+  * minidump_on_failure : If true, we should generate a minidump whenever an error is detected (default to false). This only works when you run under the logger.
+  * no_log_as_text: If set, we won't generate a textual log describing any errors. This only works when you run under the logger.
 
 ==Interpret the error report.==
 
