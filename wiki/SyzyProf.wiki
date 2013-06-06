@@ -11,6 +11,12 @@ SyzyProf will (eventually) aggregate data across:
 
 SyzyProf generates output files that are compatible with [http://kcachegrind.sourceforge.net/html/Home.html KCacheGrind], which is an excellent open-source profile visualization tool [http://sourceforge.net/projects/precompiledbin/files/kcachegrind.zip/download that's available for Windows as a binary].
 
+On Linux, kcachegrind might be as easy to come by as running this command:
+{{{
+sudo apt-get install kcachegrind
+}}}
+
+
 = Details =
 
 == How do I use it? ==
