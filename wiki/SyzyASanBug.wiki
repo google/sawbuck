@@ -56,6 +56,20 @@ If you're using a minidump you can open it directly in !WinDbg and you'll immedi
 
 The minidump will automatically grab some regions of memory so you may have access to the actual object that was used-after-free, or other data structures. SyzyASAN will preserve the contents of the object so you may be able to glean information from it.
 
+Note that SyzyASAN prefixes each allocated block with a header, which contains the state of the block as well as serving like a red-zone to catch underruns. You can inspect the state of the header by a command such as:
+{{{
+# Inspect the block header for the object at 0x04189bd8.
+>dt asan_rtl!agent::asan::HeapProxy::BlockHeader 0x04189bd8-10
+   +0x000 magic_number     : 0y110010101000000011100111 (0xca80e7)
+   +0x000 state            : 0y00000000 ( 0, ALLOCATED )
+   +0x004 block_size       : 0x14
+   +0x008 alloc_stack      : 0x00d9f260 agent::asan::StackCapture
+   +0x00c alloc_tid        : 0x1bb8
+}}}
+
+You can also dump the contents of memory snippets containing heap data, and use the SyzyASAN magic value (0xca80e7, or dword-aligned XXe780ca in hex dumps) to locate the block headers.
+SyzyASAN will sometime report invalid access where the underlying cause is heap corruption. If you suspect this is the cause of your error report, then looking for nearby block headers and correlating their locations and lengths will often allow you to determine whether that's the fact.
+
 == 3. Make sure you try to reproduce with a SyzyASAN build. ==
 
 First of all, your life will be much easier if you reproduce the bug with a SyzyASAN instrumented version of Chrome. You can tell if your version of Chrome is instrumented with SyzyASAN if `dumpbin /imports` shows a dependency on `asan_rtl.dll`. Also, the version number will be w.x.y.z, where z > 0.
