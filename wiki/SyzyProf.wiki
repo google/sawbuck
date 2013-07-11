@@ -32,7 +32,7 @@ As of this writing, there isn't complete coverage for all of V8's internal funct
 == How do I use it? ==
 
 To use SyzyProf, you must:
-  1. Download and install the [http://code.google.com/p/sawbuck/downloads/list?can=2&q=syzyprof latest SyzyProf installer].
+  1. Download and install the latest SyzyProf installer from [http://syzygy-archive.commondatastorage.googleapis.com/index.html?path=builds/official/ the official build archive].
   1. Download and uncompress [http://sourceforge.net/projects/precompiledbin/files/kcachegrind.zip/download the KCacheGrind zip archive]. If you work at Google, you can instead download [https://goto.google.com/qcachegrind-win this (newer) version of QCacheGrind, pre-built for Windows].
   1. Launch a SyzyProf shell from the SyzyProf folder in the start menu.
   1. Instrument your Chrome or Chromium build.
