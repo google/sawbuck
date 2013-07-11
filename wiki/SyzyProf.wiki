@@ -16,6 +16,16 @@ On Linux, kcachegrind might be as easy to come by as running this command:
 sudo apt-get install kcachegrind
 }}}
 
+= Current Status =
+
+SyzyProf is currently able to instrument and profile Chrome official builds or any local build linked with the /PROFILE flag.
+
+SyzyProf captures invocation information per-thread, and can output per-thread aggregates as KCacheGrind "parts".
+
+If you ask it nicely, SyzyProf will instrument your executable's import table (add {{{--instrument-imports}}} to the {{{instrument.exe}}} command line). In a per-thread output file, this allows you to easily answer questions such as which threads are calling ReadFile/WriteFile, which threads are creating windows, etc.
+
+Integration has recently (as of July 2013) been added to V8 and to Chrome to allow profiling JavaScript in V8.
+As of this writing, there isn't complete coverage for all of V8's internal functions which can result in dis-contiguous call graph for some JavaScript code.
 
 = Details =
 
