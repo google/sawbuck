@@ -91,6 +91,8 @@ Replace your original `chrome.dll` with the instrumented one, and make sure that
 
 *NOTE:* You can't instrument Debug builds right now due to incremental linking being enabled. Easiest is to use a Release build, but if you want a Debug build you have to disable incremental linking and enable profile information (`/PROFILE`). This is not directly supported right now, but you can get this behaviour through judicious GYP file tweaking.
 
+*NOTE:* SyzyASan doesn't support the Large Address Aware builds, you can use [http://msdn.microsoft.com/en-us/library/vstudio/d25ddyfc.aspx editbin] to turn off this flag on chrome.exe.
+
 == 5. Find a reproduction. ==
 
 If the bug has been found by !ClusterFuzz you're in luck, as there will be a nice self-contained way to reproduce it.
