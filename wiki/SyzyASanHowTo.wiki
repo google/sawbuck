@@ -18,7 +18,7 @@ You can get the latest version of our tools [http://sawbuck.googlecode.com/svn/t
 
 To instrument a binary you need to use the 'instrument.exe' executable provided by syzygy.  
 
-You binary should be a Win32 PE binary linked with the /PROFILE flag and statically linked to the CRT. The command line to do the instrumentation is the following:
+You binary should be a Win32 PE binary linked with the /PROFILE flag and statically linked to the CRT. It shouldn't be [http://msdn.microsoft.com/en-us/library/wz223b1z(v=vs.80).aspx large address aware] (you can use [http://msdn.microsoft.com/en-us/library/vstudio/d25ddyfc.aspx editbin] to disable the large address aware flag). The command line to do the instrumentation is the following:
 {{{
 instrument.exe --mode=asan --input-image=YourProgram.(exe/dll) --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.(exe/dll) --output-pdb=(optionnal)OutputPdb.pdb --debug-friendly
 }}}
