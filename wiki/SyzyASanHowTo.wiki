@@ -14,11 +14,31 @@ You can get the latest version of our tools [http://sawbuck.googlecode.com/svn/t
 
 =How-to=
 
-==Instrument a binary.==
+==Do the instrumentation.==
+
+===Instrument Chrome.dll===
+
+  # Set the following environment variables:
+    * GYP_GENERATORS=ninja
+    * GYP_DEFINES=asan=1 your_other_gyp_defines [1]
+  # Do a glient sync/runhooks or just a "python build\gyp_chromium" in order to regenerate the projects.
+  # Compile the "All_syzygy" target ("ninja -C out\Release All_syzygy").
+  # Extract out\Release\syzygy\chrome.7z to the location of your choice, put out\Release\syzygy\chrome.dll.pdb next to it and you're done.
+
+[1] component=shared_library and disable_nacl=1 are not supported yet.
+
+===Instrumentation of another binary===
 
 To instrument a binary you need to use the 'instrument.exe' executable provided by syzygy.  
 
-You binary should be a Win32 PE binary linked with the /PROFILE flag and statically linked to the CRT. It shouldn't be [http://msdn.microsoft.com/en-us/library/wz223b1z(v=vs.80).aspx large address aware] (you can use [http://msdn.microsoft.com/en-us/library/vstudio/d25ddyfc.aspx editbin] to disable the large address aware flag). The command line to do the instrumentation is the following:
+There's some restriction to this:
+  * You binary should be a Win32 PE binary linked with the /PROFILE flag and statically linked to the CRT. 
+  * It shouldn't be [http://msdn.microsoft.com/en-us/library/wz223b1z(v=vs.80).aspx large address aware] (you can use [http://msdn.microsoft.com/en-us/library/vstudio/d25ddyfc.aspx editbin] to disable the large address aware flag).
+  * If you are instrumenting a Chrome build, you might run out of memory if you are using a 32 bits version of Windows, we recommend that you use Windows 7/8 x64.
+  * Your binary should be compiled with level function linking enabled and buffer security checks disabled.
+  * The instrumenter requires to have the DIA SDK (msdia100.dll), it's installed by default with Visual Studio 2010 but we can't redistribute it. msdia100.dll is part of the C++ 2010 redistributable, but the path (C:\Program Files (x86)\Common Files\microsoft shared\VC) is not registered like with Visual Studio (C++). However, copying the msdia100.dll file to the instrumenter directory (or registering the path) should solve the problem.
+
+The command line to do the instrumentation is the following:
 {{{
 instrument.exe --mode=asan --input-image=YourProgram.(exe/dll) --input-pdb=(optionnal)YourPdb.pdb --output-image=OutputImage.(exe/dll) --output-pdb=(optionnal)OutputPdb.pdb --debug-friendly
 }}}
@@ -31,7 +51,7 @@ Before running the instrumented binary you first should copy the asan_rtl.dll fi
 
 ===Use the logger===
 
-You just need to prefix your executable command line by 'logger.exe start --arguments -- '. Run 'logger.exe' to get the list of the available arguments.
+You just need to prefix your executable command line by 'agent_logger.exe start --arguments -- '. Run 'agent_logger.exe' to get the list of the available arguments.
 
 ===Environment variable===
 
@@ -44,6 +64,8 @@ You can set the environment variable SYZYGY_ASAN_OPTIONS to give a command line 
   * exit_on_failure : Indicates if we should just exit on error rather than calling the error handler (default to false).
   * minidump_on_failure : If true, we should generate a minidump whenever an error is detected (default to false). This only works when you run under the logger.
   * no_log_as_text: If set, we won't generate a textual log describing any errors. This only works when you run under the logger.
+
+Example: If you want to get a minidump on failure and don't want a textual log set : "SYZYGY_ASAN_OPTIONS=--minidump_on_failure --no_log_as_text" before running the instrumented binary.
 
 ==Interpret the error report.==
 
