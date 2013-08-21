@@ -24,6 +24,7 @@ You can get the latest version of our tools [http://sawbuck.googlecode.com/svn/t
   # Do a glient sync/runhooks or just a "python build\gyp_chromium" in order to regenerate the projects.
   # Compile the "All_syzygy" target ("ninja -C out\Release All_syzygy").
   # Extract out\Release\syzygy\chrome.7z to the location of your choice, put out\Release\syzygy\chrome.dll.pdb next to it and you're done.
+  # You can test the instrumentation by running the logger (see section below) and navigating to chrome://crash/heap-overflow, you should get a crash report in the logger's console.
 
 [1] component=shared_library and disable_nacl=1 are not supported yet.
 
