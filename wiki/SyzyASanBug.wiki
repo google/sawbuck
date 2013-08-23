@@ -42,10 +42,10 @@ If you're using a minidump you can open it directly in !WinDbg and you'll immedi
 > dt bad_access_info
 
 # Dump the stack trace associated with the allocation.
-> dps @@(bad_access_info->alloc_stack) L@@(bad_access_info->alloc_stack_size)
+> dps @@(bad_access_info.alloc_stack) L@@(bad_access_info.alloc_stack_size)
 
 # Dump the stack trace associated with the free.
-> dps @@(bad_access_info->free_stack) L@@(bad_access_info->free_stack_size)
+> dps @@(bad_access_info.free_stack) L@@(bad_access_info.free_stack_size)
 
 # Switch contexts to the exception record in the minidump.
 > .ecxr
