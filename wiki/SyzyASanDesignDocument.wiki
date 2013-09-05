@@ -80,7 +80,8 @@ mov eax, [address]
 }}}
 become:
 {{{
-push eax
-lea eax, [address]
+push edx
+lea edx, [address]
 call ensure_address_is_not_poisoned
+mov eax, [address]
 }}}
