@@ -65,6 +65,7 @@ You can set the environment variable SYZYGY_ASAN_OPTIONS to give a command line 
   * exit_on_failure : Indicates if we should just exit on error rather than calling the error handler (default to false).
   * minidump_on_failure : If true, we should generate a minidump whenever an error is detected (default to false). This only works when you run under the logger.
   * no_log_as_text: If set, we won't generate a textual log describing any errors. This only works when you run under the logger.
+  * trailer_padding_size : The size of the padding added to every memory block trailer.
 
 Example: If you want to get a minidump on failure and don't want a textual log set : "SYZYGY_ASAN_OPTIONS=--minidump_on_failure --no_log_as_text" before running the instrumented binary.
 
