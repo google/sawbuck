@@ -48,7 +48,7 @@ You can add the --overwrite flag to allow output files to be overwritten.
 
 ==Run the instrumented binary.==
 
-Before running the instrumented binary you first should copy the asan_rtl.dll file to a directory in the DLL search path for the instrumented binary (the same directory as the binary or a directory in the binary's PATH). Then you can simply start the instrumented binary from a command prompt. By default the error reports are printed into the console. If you are instrumenting chrome.dll you might be interested to use our logger to get the stack traces out of the sandboxed processes (i.e. the renderer).
+Before running the instrumented binary you first should copy the syzyasan_rtl.dll file to a directory in the DLL search path for the instrumented binary (the same directory as the binary or a directory in the binary's PATH). Then you can simply start the instrumented binary from a command prompt. By default the error reports are printed into the console. If you are instrumenting chrome.dll you might be interested to use our logger to get the stack traces out of the sandboxed processes (i.e. the renderer).
 
 ===Use the logger===
 
