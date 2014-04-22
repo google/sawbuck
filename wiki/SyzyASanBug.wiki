@@ -111,7 +111,7 @@ Otherwise it's up to you to find a way to reproduce the bug. The bug report shou
 
 == 5. Fix it! ==
 
-This is up to you! If we could automate this, we would!
+This is up to you! If we could automate this, we would! You can get more information on how to use SyzyASan on the [https://code.google.com/p/sawbuck/wiki/SyzyASanHowTo How-to] page.
 
 
 = FAQ =
