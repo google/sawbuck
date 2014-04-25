@@ -19,25 +19,6 @@
 
 namespace testing {
 
-const wchar_t kExampleArchiveName[] =
-    L"syzygy\\core\\test_data\\archive.lib";
-const wchar_t kExampleCoff[] =
-    L"syzygy\\core\\test_data\\coff.obj";
-const wchar_t kExampleCoffImportDefinition[] =
-    L"syzygy\\core\\test_data\\import_definition.obj";
-const wchar_t kExampleCoffLtcgName[] =
-    L"syzygy\\core\\test_data\\coff_ltcg.obj";
-const wchar_t kExampleCoffMachineTypeNullName[] =
-    L"syzygy\\core\\test_data\\machine_type_null.obj";
-const wchar_t kExamplePdbName[] =
-    L"syzygy\\core\\test_data\\foo.pdb";
-const wchar_t kExamplePeDll[] =
-    L"syzygy\\core\\test_data\\foo.dll";
-const wchar_t kExamplePeExe[] =
-    L"syzygy\\core\\test_data\\foo.exe";
-const wchar_t kExampleResources32Name[] =
-    L"syzygy\\core\\test_data\\resources32.obj";
-
 base::FilePath GetSrcRelativePath(const wchar_t* rel_path) {
   base::FilePath src_dir;
   PathService::Get(base::DIR_SOURCE_ROOT, &src_dir);
@@ -51,10 +32,26 @@ base::FilePath GetExeRelativePath(const wchar_t* rel_path) {
 }
 
 base::FilePath GetOutputRelativePath(const wchar_t* rel_path) {
+#if defined(_DEBUG)
+  // TODO(chrisha): Expose $(ProjectDir) and $(OutputDir) via defines in the
+  //     project gyp file.
+  #if defined(_COVERAGE_BUILD)
+    static const wchar_t kOutputDir[] = L"Coverage";
+  #else
+    static const wchar_t kOutputDir[] = L"Debug";
+  #endif
+#else
+#if defined(NDEBUG)
+  static const wchar_t kOutputDir[] = L"Release";
+#else
+#error Unknown build profile.
+#endif
+#endif
+
   base::FilePath src_dir;
   PathService::Get(base::DIR_SOURCE_ROOT, &src_dir);
-  // Append the output path configured by the build system.
-  src_dir = src_dir.AppendASCII(BUILD_OUTPUT_DIR);
+  src_dir = src_dir.Append(L"build");
+  src_dir = src_dir.Append(kOutputDir);
   return src_dir.Append(rel_path);
 }
 

@@ -17,7 +17,6 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/rand_util.h"
 #include "base/string_util.h"
 #include "base/stringprintf.h"
 #include "base/memory/ref_counted.h"
@@ -26,7 +25,6 @@
 #include "syzygy/block_graph/basic_block_assembler.h"
 #include "syzygy/block_graph/block_builder.h"
 #include "syzygy/block_graph/block_util.h"
-#include "syzygy/block_graph/typed_block.h"
 #include "syzygy/common/defs.h"
 #include "syzygy/instrument/transforms/asan_intercepts.h"
 #include "syzygy/pe/pe_utils.h"
@@ -772,10 +770,7 @@ bool AsanBasicBlockTransform::InstrumentBasicBlock(
     BasicCodeBlock* basic_block,
     StackAccessMode stack_mode,
     BlockGraph::ImageFormat image_format) {
-  DCHECK_NE(reinterpret_cast<BasicCodeBlock*>(NULL), basic_block);
-
-  if (instrumentation_rate_ == 0.0)
-    return true;
+  DCHECK(basic_block != NULL);
 
   // Pre-compute liveness information for each instruction.
   std::list<LivenessAnalysis::State> states;
@@ -880,15 +875,9 @@ bool AsanBasicBlockTransform::InstrumentBasicBlock(
     if (segment == R_FS || segment == R_GS)
       continue;
 
-    // Don't instrument any filtered instructions.
+    // Finally, don't instrument any filtered instructions.
     if (IsFiltered(*iter_inst))
       continue;
-
-    // Randomly sample to effect partial instrumentation.
-    if (instrumentation_rate_ < 1.0 &&
-        base::RandDouble() >= instrumentation_rate_) {
-      continue;
-    }
 
     // Create a BasicBlockAssembler to insert new instruction.
     BasicBlockAssembler bb_asm(iter_inst, &basic_block->instructions());
@@ -921,12 +910,6 @@ bool AsanBasicBlockTransform::InstrumentBasicBlock(
   DCHECK(iter_state == states.end());
 
   return true;
-}
-
-void AsanBasicBlockTransform::set_instrumentation_rate(
-    double instrumentation_rate) {
-  // Set the instrumentation rate, capping it between 0 and 1.
-  instrumentation_rate_ = std::max(0.0, std::min(1.0, instrumentation_rate));
 }
 
 bool AsanBasicBlockTransform::TransformBasicBlockSubGraph(
@@ -976,15 +959,7 @@ AsanTransform::AsanTransform()
       use_liveness_analysis_(false),
       remove_redundant_checks_(false),
       use_interceptors_(false),
-      instrumentation_rate_(1.0),
-      asan_parameters_(NULL),
-      check_access_hooks_ref_(),
-      asan_parameters_block_(NULL) {
-}
-
-void AsanTransform::set_instrumentation_rate(double instrumentation_rate) {
-  // Set the instrumentation rate, capping it between 0 and 1.
-  instrumentation_rate_ = std::max(0.0, std::min(1.0, instrumentation_rate));
+      check_access_hooks_ref_() {
 }
 
 bool AsanTransform::PreBlockGraphIteration(
@@ -1124,7 +1099,6 @@ bool AsanTransform::OnBlock(const TransformPolicyInterface* policy,
   transform.set_use_liveness_analysis(use_liveness_analysis());
   transform.set_remove_redundant_checks(remove_redundant_checks());
   transform.set_filter(filter());
-  transform.set_instrumentation_rate(instrumentation_rate_);
 
   if (!ApplyBasicBlockSubGraphTransform(
           &transform, policy, block_graph, block, NULL)) {
@@ -1147,9 +1121,6 @@ bool AsanTransform::PostBlockGraphIteration(
                               header_block)) {
       return false;
     }
-
-    if (!PeInjectAsanParameters(policy, block_graph, header_block))
-      return false;
   } else {
     DCHECK_EQ(BlockGraph::COFF_IMAGE, block_graph->image_format());
     if (!CoffInterceptFunctions(kAsanIntercepts, policy, block_graph,
@@ -1243,55 +1214,6 @@ bool AsanTransform::PeInterceptFunctions(
 
   // Finally, redirect all references to intercepted functions.
   pe::RedirectReferences(reference_redirect_map);
-
-  return true;
-}
-
-bool AsanTransform::PeInjectAsanParameters(
-    const TransformPolicyInterface* policy,
-    BlockGraph* block_graph,
-    BlockGraph::Block* header_block) {
-  DCHECK_NE(reinterpret_cast<TransformPolicyInterface*>(NULL), policy);
-  DCHECK_NE(reinterpret_cast<BlockGraph*>(NULL), block_graph);
-  DCHECK_NE(reinterpret_cast<BlockGraph::Block*>(NULL), header_block);
-  DCHECK_EQ(BlockGraph::PE_IMAGE, block_graph->image_format());
-
-  // If there are no parameters then do nothing.
-  if (asan_parameters_ == NULL)
-    return true;
-
-  // Serialize the parameters into a new block.
-  common::FlatAsanParameters fparams(*asan_parameters_);
-  BlockGraph::Block* params_block = block_graph->AddBlock(
-      BlockGraph::DATA_BLOCK, fparams.data().size(), "AsanParameters");
-  DCHECK_NE(reinterpret_cast<BlockGraph::Block*>(NULL), params_block);
-  params_block->CopyData(fparams.data().size(), fparams.data().data());
-
-  // Wire up any references that are required.
-  COMPILE_ASSERT(1 == common::kAsanParametersVersion,
-                 pointers_in_the_params_must_be_linked_up_here);
-  block_graph::TypedBlock<common::AsanParameters> params;
-  CHECK(params.Init(0, params_block));
-  if (fparams->ignored_stack_ids != NULL) {
-    size_t offset = reinterpret_cast<const uint8*>(fparams->ignored_stack_ids) -
-        reinterpret_cast<const uint8*>(&fparams.params());
-    CHECK(params.SetReference(BlockGraph::ABSOLUTE_REF,
-                              params->ignored_stack_ids,
-                              params_block,
-                              offset,
-                              offset));
-  }
-
-  // Create an appropriately named section and put the parameters there. The
-  // RTL looks for this named section to find the parameters.
-  BlockGraph::Section* section = block_graph->FindOrAddSection(
-      common::kAsanParametersSectionName,
-      common::kAsanParametersSectionCharacteristics);
-  DCHECK_NE(reinterpret_cast<BlockGraph::Section*>(NULL), section);
-  params_block->set_section(section->id());
-
-  // Remember the block containing the parameters. This is a unittesting seam.
-  asan_parameters_block_ = params_block;
 
   return true;
 }

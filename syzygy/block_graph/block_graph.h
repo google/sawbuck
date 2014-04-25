@@ -69,16 +69,25 @@ class BlockGraphSerializer;
     /* thus is inherently safe for basic-block decomposition without having */ \
     /* to perform the myriad of safety checks we do otherwise. */ \
     F(BUILT_BY_SYZYGY) \
-    /* Deprecated: used by old decomposer. */ \
-    F(RESERVED_ATTRIBUTE1) \
-    /* Deprecated: used by old decomposer. */ \
-    F(RESERVED_ATTRIBUTE2) \
+    /* This is set for blocks whose initial disassembly was incomplete. */ \
+    /* This is not necessarily an error, as we see have seen blocks with */ \
+    /* unreachable code, even in release mode. */ \
+    /* DEPRECATED AND DISAPPEARING WITH THE OLD DECOMPOSER. */ \
+    F(INCOMPLETE_DISASSEMBLY) \
+    /* This is set for blocks whose disassembly was unable to finish due to */ \
+    /* an error. This block has violated assumptions that we make or */ \
+    /* conventions that we have observed the compiler to use. It is not safe */\
+    /* for basic block disassembly. */ \
+    F(ERRORED_DISASSEMBLY) \
     /* This is set for functions that have exception handling enabled. */ \
     /* Without delving far deeper into the specifics, it is unsafe to basic */ \
     /* block decompose these blocks. */ \
     F(HAS_EXCEPTION_HANDLING) \
-    /* Deprecated: used by old decomposer. */ \
-    F(RESERVED_ATTRIBUTE3) \
+    /* This is set for blocks whose disassembly went off the end of the */ \
+    /* block, or into data. These blocks have control flow that we are not */ \
+    /* aware of, or are otherwise malformed. */ \
+    /* DEPRECATED AND DISAPPEARING WITH THE OLD DECOMPOSER. */ \
+    F(DISASSEMBLED_PAST_END) \
     /* This is set for blocks that have a thunk symbol pointing to them. */ \
     /* Typically thunk blocks are compiler or linker-generated, such as */ \
     /* e.g. import thunks, delay load import thunks, etc. */ \

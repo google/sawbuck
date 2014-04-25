@@ -310,9 +310,8 @@ int wmain(int argc, const wchar_t** argv) {
     HRESULT hr = consumer.OpenFileSession(args[i].c_str());
 
     if (FAILED(hr))
-      return Error(
-          base::StringPrintf(L"Error 0x%08X, opening file \"%ls\"",
-                             hr, args[i].c_str()));
+      return Error(StringPrintf(L"Error 0x%08X, opening file \"%ls\"",
+                                hr, args[i].c_str()));
   }
 
   LogDumpHandler handler;
@@ -323,7 +322,7 @@ int wmain(int argc, const wchar_t** argv) {
 
   HRESULT hr = consumer.Consume();
   if (FAILED(hr))
-    return Error(base::StringPrintf(L"Error 0x%08X consuming log files", hr));
+    return Error(StringPrintf(L"Error 0x%08X consuming log files", hr));
 
   return 0;
 }

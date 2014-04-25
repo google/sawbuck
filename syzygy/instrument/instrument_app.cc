@@ -22,7 +22,6 @@
 
 #include "base/string_util.h"
 #include "base/stringprintf.h"
-#include "syzygy/instrument/instrumenters/archive_instrumenter.h"
 #include "syzygy/instrument/instrumenters/asan_instrumenter.h"
 #include "syzygy/instrument/instrumenters/bbentry_instrumenter.h"
 #include "syzygy/instrument/instrumenters/branch_instrumenter.h"
@@ -78,21 +77,11 @@ static const char kUsageFormatStr[] =
     "                            the strings when augmenting the PDB. They\n"
     "                            are stripped by default to keep PDB sizes\n"
     "                            down.\n"
+    "    --old-decomposer        Use the old decomposer.\n"
     "    --output-pdb=<path>     The PDB for the instrumented DLL. If not\n"
     "                            provided will attempt to generate one.\n"
     "    --overwrite             Allow output files to be overwritten.\n"
     "  asan mode options:\n"
-    "    --asan-rtl-options=OPTIONS\n"
-    "                            Allows specification of options that will\n"
-    "                            influence the ASAN RTL that attaches to the\n"
-    "                            instrumented module. For descriptions of\n"
-    "                            these options see common/asan_parameters. If\n"
-    "                            not specified then the defaults of the RTL\n"
-    "                            will be used.\n"
-    "    --instrumentation-rate=DOUBLE\n"
-    "                            Specifies the fraction of instructions to\n"
-    "                            be instrumented, as a value in the range\n"
-    "                            0..1, inclusive. Defaults to 1.\n"
     "    --no-interceptors\n     Disable the interception of the functions\n"
     "                            like memset, memcpy, stcpy, ReadFile... to\n"
     "                            check their parameters.\n"
@@ -115,13 +104,6 @@ static const char kUsageFormatStr[] =
     "  profile mode options:\n"
     "    --instrument-imports    Also instrument calls to imports.\n"
     "\n";
-
-// Currently only ASAN supports COFF/LIB instrumentation. As other
-// instrumenters add COFF support they need to be added with a similar
-// mechanism.
-InstrumenterInterface* AsanInstrumenterFactory() {
-  return new instrumenters::AsanInstrumenter();
-}
 
 }  // namespace
 
@@ -166,10 +148,7 @@ bool InstrumentApp::ParseCommandLine(const CommandLine* cmd_line) {
   } else {
     std::string mode = cmd_line->GetSwitchValueASCII("mode");
     if (LowerCaseEqualsASCII(mode, "asan")) {
-      // We wrap the ASAN instrumenter in an ArchiveInstrumenter adapter so
-      // that it can transparently handle .lib files.
-      instrumenter_.reset(new instrumenters::ArchiveInstrumenter(
-          &AsanInstrumenterFactory));
+      instrumenter_.reset(new instrumenters::AsanInstrumenter());
     } else if (LowerCaseEqualsASCII(mode, "bbentry")) {
       instrumenter_.reset(new instrumenters::BasicBlockEntryInstrumenter());
     } else if (LowerCaseEqualsASCII(mode, "branch")) {

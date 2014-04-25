@@ -80,10 +80,8 @@ class TestAsanTransform : public AsanTransform {
  public:
   using AsanTransform::use_interceptors_;
   using AsanTransform::use_liveness_analysis_;
-  using AsanTransform::asan_parameters_block_;
   using AsanTransform::CoffInterceptFunctions;
   using AsanTransform::PeInterceptFunctions;
-  using AsanTransform::PeInjectAsanParameters;
 };
 
 class AsanTransformTest : public testing::TestDllTransformTest {
@@ -95,13 +93,13 @@ class AsanTransformTest : public testing::TestDllTransformTest {
         &basic_block_->instructions()));
   }
 
-  void ApplyTransformToIntegrationTestDll() {
+  void ApplyTransformToTestDll() {
     base::FilePath input_path = ::testing::GetOutputRelativePath(
-        testing::kIntegrationTestsDllName);
+        testing::kTestDllName);
 
     base::FilePath temp_dir;
     CreateTemporaryDir(&temp_dir);
-    relinked_path_ = temp_dir.Append(testing::kIntegrationTestsDllName);
+    relinked_path_ = temp_dir.Append(testing::kTestDllName);
 
     pe::PERelinker relinker(&pe_policy_);
     relinker.set_input_path(input_path);
@@ -274,37 +272,6 @@ TEST_F(AsanTransformTest, SetRemoveRedundantChecksFlag) {
   EXPECT_TRUE(bb_transform.remove_redundant_checks());
   bb_transform.set_remove_redundant_checks(false);
   EXPECT_FALSE(bb_transform.remove_redundant_checks());
-}
-
-TEST_F(AsanTransformTest, SetInstrumentationRate) {
-  EXPECT_EQ(1.0, asan_transform_.instrumentation_rate());
-  asan_transform_.set_instrumentation_rate(1.2);
-  EXPECT_EQ(1.0, asan_transform_.instrumentation_rate());
-  asan_transform_.set_instrumentation_rate(-0.2);
-  EXPECT_EQ(0.0, asan_transform_.instrumentation_rate());
-  asan_transform_.set_instrumentation_rate(0.5);
-  EXPECT_EQ(0.5, asan_transform_.instrumentation_rate());;
-
-  TestAsanBasicBlockTransform bb_transform(&hooks_check_access_ref_);
-  EXPECT_EQ(1.0, bb_transform.instrumentation_rate());
-  bb_transform.set_instrumentation_rate(1.2);
-  EXPECT_EQ(1.0, bb_transform.instrumentation_rate());
-  bb_transform.set_instrumentation_rate(-0.2);
-  EXPECT_EQ(0.0, bb_transform.instrumentation_rate());
-  bb_transform.set_instrumentation_rate(0.5);
-  EXPECT_EQ(0.5, bb_transform.instrumentation_rate());
-}
-
-TEST_F(AsanTransformTest, SetAsanParameters) {
-  common::InflatedAsanParameters iparams;
-  common::InflatedAsanParameters* null = NULL;
-  common::InflatedAsanParameters* params = &iparams;
-
-  EXPECT_EQ(null, asan_transform_.asan_parameters());
-  asan_transform_.set_asan_parameters(params);
-  EXPECT_EQ(params, asan_transform_.asan_parameters());
-  asan_transform_.set_asan_parameters(NULL);
-  EXPECT_EQ(null, asan_transform_.asan_parameters());
 }
 
 TEST_F(AsanTransformTest, ApplyAsanTransformPE) {
@@ -897,7 +864,7 @@ bool GetAsanHooksIATEntries(const PEImage &image,
 }  // namespace
 
 TEST_F(AsanTransformTest, ImportsAreRedirectedPe) {
-  ASSERT_NO_FATAL_FAILURE(ApplyTransformToIntegrationTestDll());
+  ASSERT_NO_FATAL_FAILURE(ApplyTransformToTestDll());
 
   // Load the transformed module without resolving its dependencies.
   base::NativeLibrary lib =
@@ -1007,7 +974,6 @@ TEST_F(AsanTransformTest, ImportsAreRedirectedPe) {
   expected.insert("asan_strncpy");
   expected.insert("asan_strncat");
   expected.insert("asan_wcsrchr");
-  expected.insert("asan_wcschr");
   Intersect(imports, expected, &results);
   EXPECT_FALSE(results.empty());
   EXPECT_EQ(results, expected);
@@ -1218,7 +1184,7 @@ TEST_F(AsanTransformTest, ImportsAreRedirectedCoff) {
 }
 
 TEST_F(AsanTransformTest, AsanHooksAreStubbed) {
-  ASSERT_NO_FATAL_FAILURE(ApplyTransformToIntegrationTestDll());
+  ASSERT_NO_FATAL_FAILURE(ApplyTransformToTestDll());
 
   // Load the transformed module without resolving its dependencies.
   base::NativeLibrary lib =
@@ -1363,122 +1329,6 @@ TEST_F(AsanTransformTest, CoffInterceptFunctions) {
 
   // No sections should have been added.
   EXPECT_EQ(num_sections_pre_transform, block_graph_.sections().size());
-}
-
-namespace {
-
-void GetImageSizeSubsampledInstrumentation(double rate, size_t* size) {
-  ASSERT_LE(0.0, rate);
-  ASSERT_GE(1.0, rate);
-  ASSERT_TRUE(size != NULL);
-
-  base::FilePath test_dll_path = ::testing::GetOutputRelativePath(
-      testing::kTestDllName);
-
-  pe::PEFile pe_file;
-  ASSERT_TRUE(pe_file.Init(test_dll_path));
-
-  BlockGraph block_graph;
-  pe::ImageLayout layout(&block_graph);
-  pe::Decomposer decomposer(pe_file);
-  ASSERT_TRUE(decomposer.Decompose(&layout));
-
-  BlockGraph::Block* header_block = layout.blocks.GetBlockByAddress(
-      core::RelativeAddress(0));
-  ASSERT_TRUE(header_block != NULL);
-
-  AsanTransform tx;
-  tx.set_instrumentation_rate(rate);
-
-  pe::PETransformPolicy policy;
-  ASSERT_TRUE(tx.TransformBlockGraph(&policy, &block_graph, header_block));
-
-  *size = 0;
-  BlockGraph::BlockMap::const_iterator block_it = block_graph.blocks().begin();
-  for (; block_it != block_graph.blocks().end(); ++block_it) {
-    *size += block_it->second.size();
-  }
-}
-
-}  // namespace
-
-TEST_F(AsanTransformTest, SubsampledInstrumentationTestDll) {
-  size_t rate0 = 0;
-  ASSERT_NO_FATAL_FAILURE(GetImageSizeSubsampledInstrumentation(0.0, &rate0));
-
-  size_t rate50 = 0;
-  ASSERT_NO_FATAL_FAILURE(GetImageSizeSubsampledInstrumentation(0.5, &rate50));
-
-  size_t rate100 = 0;
-  ASSERT_NO_FATAL_FAILURE(GetImageSizeSubsampledInstrumentation(1.0, &rate100));
-
-  size_t size100 = rate100 - rate0;
-  size_t size50 = rate50 - rate0;
-
-  // This could theoretically fail, but that would imply an extremely bad
-  // implementation of the underlying random number generator. There are about
-  // 1850 instructions being instrumented. Since this is effectively a fair
-  // coin toss we expect a standard deviation of 0.5 * sqrt(1850) = 22
-  // instructions. A 10% margin is 185 / 22 = 8.4 standard deviations. For
-  // |z| > 8.4, the p-value is 4.5e-17, or 17 nines of confidence. That should
-  // keep any flake largely at bay. Thus, if this fails it's pretty much certain
-  // the implementation is at fault.
-  EXPECT_LE(40 * size100 / 100, size50);
-  EXPECT_GE(60 * size100 / 100, size50);
-}
-
-TEST_F(AsanTransformTest, PeInjectAsanParametersNoStackIds) {
-  ASSERT_NO_FATAL_FAILURE(DecomposeTestDll());
-
-  common::InflatedAsanParameters params;
-  asan_transform_.set_asan_parameters(&params);
-  EXPECT_TRUE(asan_transform_.PeInjectAsanParameters(
-      policy_, &block_graph_, header_block_));
-
-  // There should be a block containing parameters with the appropriate size.
-  ASSERT_TRUE(asan_transform_.asan_parameters_block_ != NULL);
-  EXPECT_EQ(sizeof(common::AsanParameters),
-            asan_transform_.asan_parameters_block_->size());
-
-  // The block should contain no references.
-  EXPECT_TRUE(asan_transform_.asan_parameters_block_->references().empty());
-
-  // The block should not be referred to at all.
-  EXPECT_TRUE(asan_transform_.asan_parameters_block_->referrers().empty());
-}
-
-TEST_F(AsanTransformTest, PeInjectAsanParametersStackIds) {
-  ASSERT_NO_FATAL_FAILURE(DecomposeTestDll());
-
-  common::InflatedAsanParameters params;
-  params.ignored_stack_ids_set.insert(0xDEADBEEF);
-
-  asan_transform_.set_asan_parameters(&params);
-  EXPECT_TRUE(asan_transform_.PeInjectAsanParameters(
-      policy_, &block_graph_, header_block_));
-
-  // There should be a block containing parameters with the appropriate size.
-  ASSERT_TRUE(asan_transform_.asan_parameters_block_ != NULL);
-  EXPECT_EQ(sizeof(common::AsanParameters) + 2 * sizeof(common::AsanStackId),
-            asan_transform_.asan_parameters_block_->size());
-
-  // The block should contain one reference to itself, from and to the
-  // appropriate place.
-  EXPECT_EQ(1u, asan_transform_.asan_parameters_block_->references().size());
-  BlockGraph::Reference ignored_stack_ids_ref(
-      BlockGraph::ABSOLUTE_REF,
-      BlockGraph::Reference::kMaximumSize,
-      asan_transform_.asan_parameters_block_,
-      sizeof(common::AsanParameters),
-      sizeof(common::AsanParameters));
-  BlockGraph::Block::ReferenceMap::const_iterator ignored_stack_ids_ref_it =
-      asan_transform_.asan_parameters_block_->references().begin();
-  EXPECT_EQ(offsetof(common::AsanParameters, ignored_stack_ids),
-            ignored_stack_ids_ref_it->first);
-  EXPECT_EQ(ignored_stack_ids_ref, ignored_stack_ids_ref_it->second);
-
-  // The block should only be referred to by itself.
-  EXPECT_EQ(1u, asan_transform_.asan_parameters_block_->referrers().size());
 }
 
 }  // namespace transforms

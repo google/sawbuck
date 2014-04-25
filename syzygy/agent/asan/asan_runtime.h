@@ -27,52 +27,11 @@
 #include "syzygy/agent/asan/asan_heap.h"
 #include "syzygy/agent/asan/stack_capture.h"
 #include "syzygy/agent/common/dlist.h"
-#include "syzygy/common/asan_parameters.h"
 
 namespace agent {
 namespace asan {
 
 class AsanLogger;
-
-// Store the information about a corrupt block.
-struct AsanBlockInfo {
-  // The address of the header for this block.
-  void* header;
-  // The user size of the block.
-  size_t user_size : 30;
-  // This is implicitly a HeapProxy::BlockState value.
-  size_t state : 2;
-  // The ID of the allocation thread.
-  DWORD alloc_tid;
-  // The ID of the free thread.
-  DWORD free_tid;
-  // Indicates if the block is corrupt.
-  bool corrupt;
-  // The allocation stack trace.
-  void* alloc_stack[agent::asan::StackCapture::kMaxNumFrames];
-  // The free stack trace.
-  void* free_stack[agent::asan::StackCapture::kMaxNumFrames];
-  // The size of the allocation stack trace.
-  uint8 alloc_stack_size;
-  // The size of the free stack trace.
-  uint8 free_stack_size;
-};
-
-struct AsanCorruptBlockRange {
-  // The beginning address of the range.
-  void* address;
-  // The length of the range.
-  size_t length;
-  // The number of blocks in this range.
-  size_t block_count;
-  // The number of blocks in the |block_info| array.
-  size_t block_info_count;
-  // The information about the blocks in this range. This may include one or
-  // more of the corrupt blocks and/or the valid blocks surrounding them; at the
-  // very least it will contain the first corrupt block in the range. The real
-  // length of this array will be stored in |block_info_count|.
-  AsanBlockInfo* block_info;
-};
 
 // Store the information about a bad memory access.
 struct AsanErrorInfo {
@@ -110,13 +69,6 @@ struct AsanErrorInfo {
   // The time since the memory block containing this address has been freed.
   // This would be equal to zero if the block is still allocated.
   uint64 microseconds_since_free;
-  // Indicates if the heap is corrupt.
-  bool heap_is_corrupt;
-  // The number of entries in the |corrupt_ranges| structure.
-  size_t corrupt_range_count;
-  // The information about the corrupt ranges of memory. The real length of this
-  // array will be stored in |corrupt_range_count|.
-  AsanCorruptBlockRange* corrupt_ranges;
 };
 
 // An Asan Runtime manager.
@@ -141,8 +93,6 @@ class AsanRuntime {
  public:
   typedef std::set<StackCapture::StackId> StackIdSet;
 
-  typedef std::vector<HeapProxy*> HeapVector;
-
   // The type of callback used by the OnError function.
   typedef base::Callback<void(AsanErrorInfo*)> AsanOnErrorCallBack;
 
@@ -158,6 +108,9 @@ class AsanRuntime {
   StackCaptureCache* stack_cache() {
     DCHECK(stack_cache_.get() != NULL);
     return stack_cache_.get();
+  }
+  static const wchar_t* SyzyAsanDll() {
+    return kSyzyAsanDll;
   }
   // @}
 
@@ -190,31 +143,102 @@ class AsanRuntime {
 
   // Returns true if we should ignore the given @p stack_id, false
   // otherwise.
-  bool ShouldIgnoreError(common::AsanStackId stack_id) const {
+  bool ShouldIgnoreError(size_t stack_id) const {
     // TODO(sebmarchand): Keep a list of the stack ids that have already been
     //     reported so we can avoid reporting the same error multiple times.
-    return params_.ignored_stack_ids_set.find(stack_id) !=
-        params_.ignored_stack_ids_set.end();
+    return flags_.ignored_stack_ids.find(stack_id) !=
+        flags_.ignored_stack_ids.end();
   }
 
   // Get information about a bad access.
   // @param bad_access_info Will receive the information about this access.
   void GetBadAccessInformation(AsanErrorInfo* error_info);
 
+  // The name of the environment variable holding the experiment opt-in coin
+  // toss value.
+  static const char kSyzygyAsanCoinTossEnvVar[];
+
   // The name of the environment variable containing the command-line.
   static const char kSyzygyAsanOptionsEnvVar[];
 
-  // Accessors for runtime parameters.
-  common::InflatedAsanParameters& params() { return params_; }
-  const common::InflatedAsanParameters& params() const { return params_; }
-
-  // Fill a vector with all the active heaps.
-  // @param heap_vector Will receive the active heaps.
-  void GetHeaps(HeapVector* heap_vector);
-
  protected:
+  // A structure to track the values of the flags.
+  struct AsanFlags {
+    AsanFlags()
+        : quarantine_size(0U),
+          reporting_period(0U),
+          bottom_frames_to_skip(0U),
+          max_num_frames(0U),
+          trailer_padding_size(0U),
+          exit_on_failure(false),
+          minidump_on_failure(false),
+          log_as_text(true),
+          opted_in(false),
+          coin_toss(0) {
+    }
+
+    // The default size of the quarantine of the HeapProxy, in bytes.
+    size_t quarantine_size;
+
+    // The number of allocations between reports of the stack trace cache
+    // compression ratio.
+    size_t reporting_period;
+
+    // The number of bottom frames to skip on a stack trace.
+    size_t bottom_frames_to_skip;
+
+    // The max number of frames for a stack trace.
+    size_t max_num_frames;
+
+    // The size of the padding added to every memory block trailer.
+    size_t trailer_padding_size;
+
+    // The stack ids we ignore.
+    StackIdSet ignored_stack_ids;
+
+    // If true, we should generate a minidump whenever an error is detected.
+    // Defaults to false.
+    bool minidump_on_failure;
+
+    // If we should stop the logger (and the running program) after reporting
+    // an error. Defaults to false.
+    bool exit_on_failure;
+
+    // If true, we should generate a textual log describing any errors.
+    // Defaults to true;
+    bool log_as_text;
+
+    // Experiment configuration.
+    bool opted_in;
+    uint64 coin_toss;
+  };
+
+  // @name Flag strings.
+  // @{
+  static const char kBottomFramesToSkip[];
+  static const char kCompressionReportingPeriod[];
+  static const char kExitOnFailure[];
+  static const char kIgnoredStackIds[];
+  static const char kMaxNumberOfFrames[];
+  static const char kMiniDumpOnFailure[];
+  static const char kNoLogAsText[];
+  static const char kQuarantineSize[];
+  static const wchar_t kSyzyAsanDll[];
+  static const char kTrailerPaddingSize[];
+  // @}
+
+  // @name Accessors.
+  // @{
+  const AsanFlags* const flags() { return &flags_; }
+  // @}
+
+  // @name Mutators.
+  // @{
+  void set_flags(const AsanFlags* flags);
+  // @}
+
   // Propagate the values of the flags to the target modules.
-  void PropagateParams() const;
+  void PropagateFlagsValues() const;
 
  private:
   // Set up the logger.
@@ -229,6 +253,9 @@ class AsanRuntime {
   // Tear down the stack cache.
   void TearDownStackCache();
 
+  // Parse and set the flags from the wide string @p str.
+  bool ParseFlagsFromString(std::wstring str);
+
   // The shared logger instance that will be used by all heap proxies.
   scoped_ptr<AsanLogger> logger_;
 
@@ -238,14 +265,14 @@ class AsanRuntime {
   // The asan error callback functor.
   AsanOnErrorCallBack asan_error_callback_;
 
+  // The values of the flags.
+  AsanFlags flags_;
+
   // The heap proxies list lock.
   base::Lock heap_proxy_dlist_lock_;
 
   // The heap proxies list.
   LIST_ENTRY heap_proxy_dlist_;  // Under heap_proxy_dlist_lock.
-
-  // The runtime parameters.
-  common::InflatedAsanParameters params_;
 
   DISALLOW_COPY_AND_ASSIGN(AsanRuntime);
 };

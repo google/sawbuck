@@ -15,7 +15,7 @@
 ::
 :: Invoke this script to release new binaries after an official build
 :: has completed successfully.
-set SYZYGY_PYTHON="%~dp0..\third_party\python_26\python.exe"
-set SYZYGY_SCRIPT="%~dp0build\release_binaries.py"
+set PYTHON="%~dp0..\third_party\python_26\python.exe"
+set SCRIPT="%~dp0build\release_binaries.py"
 
-%SYZYGY_PYTHON% %SYZYGY_SCRIPT% %*
+%PYTHON% %SCRIPT% %*

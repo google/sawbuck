@@ -36,6 +36,7 @@
 #include "syzygy/pe/coff_file_writer.h"
 #include "syzygy/pe/coff_image_layout_builder.h"
 #include "syzygy/pe/decomposer.h"
+#include "syzygy/pe/old_decomposer.h"
 #include "syzygy/pe/pe_data.h"
 
 namespace testing {
@@ -155,11 +156,6 @@ const wchar_t testing::kTestDllPdbName[] = L"test_dll.dll.pdb";
 const wchar_t testing::kTestDllName64[] = L"test_dll_x64.dll";
 const wchar_t testing::kTestDllPdbName64[] = L"test_dll_x64.dll.pdb";
 
-const wchar_t testing::kIntegrationTestsDllName[] =
-    L"integration_tests_dll.dll";
-const wchar_t testing::kIntegrationTestsDllPdbName[] =
-    L"integration_tests_dll.dll.pdb";
-
 const wchar_t kNoExportsDllName[] = L"no_exports_dll.dll";
 const wchar_t kNoExportsDllPdbName[] = L"no_exports_dll.dll.pdb";
 
@@ -168,8 +164,8 @@ const wchar_t testing::kTestDllLtcgObjName[] = L"test_dll.ltcg_obj";
 const wchar_t testing::kTestDllCoffObjPdbName[] = L"test_dll.coff_obj.pdb";
 const wchar_t testing::kTestDllLtcgObjPdbName[] = L"test_dll.ltcg_obj.pdb";
 
-const wchar_t testing::kCodeView2Name[] =
-    L"syzygy\\pe\\test_data\\codeview2.obj";
+const wchar_t testing::kMachineTypeNullCoffName[] =
+    L"syzygy\\pe\\test_data\\machine_type_null.obj";
 
 const wchar_t kAsanInstrumentedTestDllName[] =
     L"asan_instrumented_test_dll.dll";
@@ -327,7 +323,8 @@ void PELibUnitTest::LoadTestDll(const base::FilePath& path,
   ASSERT_TRUE(module != NULL);
 }
 
-void PELibUnitTest::DecomposeTestDll(pe::PEFile* pe_file,
+void PELibUnitTest::DecomposeTestDll(bool use_old_decomposer,
+                                     pe::PEFile* pe_file,
                                      pe::ImageLayout* image_layout) {
   ASSERT_TRUE(pe_file != NULL);
   ASSERT_TRUE(image_layout != NULL);
@@ -335,8 +332,13 @@ void PELibUnitTest::DecomposeTestDll(pe::PEFile* pe_file,
   base::FilePath test_dll = GetOutputRelativePath(kTestDllName);
   ASSERT_TRUE(pe_file->Init(test_dll));
 
-  pe::Decomposer decomposer(*pe_file);
-  ASSERT_TRUE(decomposer.Decompose(image_layout));
+  if (use_old_decomposer) {
+    pe::OldDecomposer decomposer(*pe_file);
+    ASSERT_TRUE(decomposer.Decompose(image_layout));
+  } else {
+    pe::Decomposer decomposer(*pe_file);
+    ASSERT_TRUE(decomposer.Decompose(image_layout));
+  }
 }
 
 void PELibUnitTest::CheckTestDll(const base::FilePath& path) {

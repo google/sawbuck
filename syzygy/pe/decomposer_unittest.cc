@@ -581,16 +581,14 @@ TEST_F(DecomposerTest, LabelsAndAttributes) {
 #endif
 
   // Validate compiland names.
-  // MSVS produces files named test_dll.obj and Ninja build produces files
-  // named test_dll.test_dll.obj.
   EXPECT_TRUE(EndsWith(dll_main_block->compiland_name(),
-                       "test_dll.obj",
+                       "\\test_dll.obj",
                        true));
   EXPECT_TRUE(EndsWith(func_with_inl_asm_block->compiland_name(),
-                       "test_dll.obj",
+                       "\\test_dll.obj",
                        true));
   EXPECT_TRUE(EndsWith(strchr_block->compiland_name(),
-                       "strchr.obj",
+                       "\\strchr.obj",
                        true));
 
   // Validate that the DllMain block has the expected population of labels.
@@ -640,22 +638,6 @@ TEST_F(DecomposerTest, DecomposeTestDllMSVS2013) {
       L"syzygy\\pe\\test_data\\test_dll_vs2013.dll");
   base::FilePath pdb_path = testing::GetSrcRelativePath(
       L"syzygy\\pe\\test_data\\test_dll_vs2013.dll.pdb");
-
-  PEFile pe_file;
-  ASSERT_TRUE(pe_file.Init(dll_path));
-
-  Decomposer decomposer(pe_file);
-  BlockGraph block_graph;
-  ImageLayout image_layout(&block_graph);
-  decomposer.set_pdb_path(pdb_path);
-  ASSERT_TRUE(decomposer.Decompose(&image_layout));
-}
-
-TEST_F(DecomposerTest, DecomposeSyzyAsanRtlDllWithPGO) {
-  base::FilePath dll_path = testing::GetSrcRelativePath(
-      L"syzygy\\pe\\test_data\\syzyasan_rtl.dll");
-  base::FilePath pdb_path = testing::GetSrcRelativePath(
-      L"syzygy\\pe\\test_data\\syzyasan_rtl.dll.pdb");
 
   PEFile pe_file;
   ASSERT_TRUE(pe_file.Init(dll_path));

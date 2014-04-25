@@ -60,7 +60,6 @@ class TestHeapProxy : public HeapProxy {
   using HeapProxy::InitializeAsanBlock;
   using HeapProxy::UserPointerToBlockHeader;
   using HeapProxy::UserPointerToAsanPointer;
-  using HeapProxy::kBlockHeaderSignature;
   using HeapProxy::kDefaultAllocGranularityLog;
   using HeapProxy::quarantine_size_;
 
@@ -173,9 +172,6 @@ class HeapTest : public testing::TestWithAsanLogger {
     // Set the error callback that the proxy will use.
     proxy_.SetHeapErrorCallback(
         base::Bind(&HeapTest::OnHeapError, base::Unretained(this)));
-
-    // Reset the allocation guard rate to being disabled.
-    proxy_.set_allocation_guard_rate(1.0);
   }
 
   virtual void TearDown() OVERRIDE {
@@ -189,7 +185,8 @@ class HeapTest : public testing::TestWithAsanLogger {
   void VerifyAllocAccess(void* alloc, size_t size) {
     uint8* mem = reinterpret_cast<uint8*>(alloc);
     ASSERT_FALSE(Shadow::IsAccessible(mem - 1));
-    ASSERT_TRUE(Shadow::IsLeftRedzone(mem - 1));
+    ASSERT_EQ(Shadow::GetShadowMarkerForAddress(mem - 1),
+              Shadow::kHeapLeftRedzone);
     for (size_t i = 0; i < size; ++i)
       ASSERT_TRUE(Shadow::IsAccessible(mem + i));
     ASSERT_FALSE(Shadow::IsAccessible(mem + size));
@@ -199,7 +196,8 @@ class HeapTest : public testing::TestWithAsanLogger {
   void VerifyFreedAccess(void* alloc, size_t size) {
     uint8* mem = reinterpret_cast<uint8*>(alloc);
     ASSERT_FALSE(Shadow::IsAccessible(mem - 1));
-    ASSERT_TRUE(Shadow::IsLeftRedzone(mem - 1));
+    ASSERT_EQ(Shadow::GetShadowMarkerForAddress(mem - 1),
+              Shadow::kHeapLeftRedzone);
     for (size_t i = 0; i < size; ++i) {
       ASSERT_FALSE(Shadow::IsAccessible(mem + i));
       ASSERT_EQ(Shadow::GetShadowMarkerForAddress(mem + i),
@@ -488,57 +486,6 @@ TEST_F(HeapTest, CorruptAsExitsQuarantine) {
         reinterpret_cast<TestHeapProxy::BlockHeader*>(errors_[0].location));
 
     break;
-  }
-}
-
-TEST_F(HeapTest, IsBlockCorruptedInvalidMagicNumber) {
-  const size_t kAllocSize = 100;
-  proxy_.SetQuarantineMaxSize(TestHeapProxy::GetAllocSize(kAllocSize));
-  proxy_.SetQuarantineMaxBlockSize(TestHeapProxy::GetAllocSize(kAllocSize));
-  LPVOID mem = proxy_.Alloc(0, kAllocSize);
-  ASSERT_TRUE(mem != NULL);
-  TestHeapProxy::BlockHeader* header =
-      TestHeapProxy::UserPointerToBlockHeader(mem);
-  ASSERT_NE(reinterpret_cast<TestHeapProxy::BlockHeader*>(NULL), header);
-
-  header->magic_number = ~TestHeapProxy::kBlockHeaderSignature;
-  EXPECT_TRUE(proxy_.IsBlockCorrupted(reinterpret_cast<uint8*>(header)));
-  header->magic_number = TestHeapProxy::kBlockHeaderSignature;
-  EXPECT_FALSE(proxy_.IsBlockCorrupted(reinterpret_cast<uint8*>(header)));
-
-  ASSERT_TRUE(proxy_.Free(0, mem));
-}
-
-TEST_F(HeapTest, IsBlockCorruptedInvalidChecksum) {
-  const size_t kAllocSize = 100;
-
-  // This can fail because of a checksum collision. However, we run it a
-  // handful of times to keep the chances as small as possible.
-  for (size_t i = 0; i < kChecksumRepeatCount; ++i) {
-    proxy_.SetQuarantineMaxSize(0);
-    proxy_.SetQuarantineMaxSize(TestHeapProxy::GetAllocSize(kAllocSize));
-    proxy_.SetQuarantineMaxBlockSize(TestHeapProxy::GetAllocSize(kAllocSize));
-    LPVOID mem = proxy_.Alloc(0, kAllocSize);
-    ASSERT_TRUE(mem != NULL);
-    ASSERT_TRUE(proxy_.Free(0, mem));
-
-    TestHeapProxy::BlockHeader* header =
-        TestHeapProxy::UserPointerToBlockHeader(mem);
-    ASSERT_NE(reinterpret_cast<TestHeapProxy::BlockHeader*>(NULL), header);
-
-    // Change some of the block content and verify that the block is now being
-    // seen as corrupted.
-    size_t original_checksum = header->checksum;
-    reinterpret_cast<int32*>(mem)[0] = rand();
-
-    // Try again for all but the last attempt if this appears to have failed.
-    if (!proxy_.IsBlockCorrupted(reinterpret_cast<uint8*>(header)) &&
-        i + 1 < kChecksumRepeatCount) {
-      continue;
-    }
-    header->checksum = original_checksum;
-
-    ASSERT_TRUE(proxy_.IsBlockCorrupted(reinterpret_cast<uint8*>(header)));
   }
 }
 
@@ -1002,7 +949,7 @@ TEST_F(HeapTest, GetTimeSinceFree) {
       const_cast<TestHeapProxy::BlockHeader*>(
           proxy_.UserPointerToBlockHeader(mem));
 
-  uint64 ticks_before_free = trace::common::GetTsc();
+  base::TimeTicks time_before_free = base::TimeTicks::HighResNow();
   ASSERT_EQ(0U, proxy_.GetTimeSinceFree(header));
   ASSERT_TRUE(proxy_.Free(0, mem));
   ASSERT_TRUE(proxy_.IsQuarantined(header));
@@ -1010,12 +957,9 @@ TEST_F(HeapTest, GetTimeSinceFree) {
   uint64 time_since_free = proxy_.GetTimeSinceFree(header);
   ASSERT_NE(0U, time_since_free);
 
-  uint64 ticks_delta = trace::common::GetTsc() - ticks_before_free;
-  ASSERT_GT(ticks_delta, 0U);
-  // We calculate the time in microseconds the same way that GetTimeSinceFree
-  // does, to ensure that we are using the same clock and the same estimate of
-  // its frequency.
-  uint64 time_delta_us = ticks_delta / proxy_.cpu_cycles_per_us();
+  base::TimeDelta time_delta = base::TimeTicks::HighResNow() - time_before_free;
+  ASSERT_GT(time_delta.ToInternalValue(), 0U);
+  uint64 time_delta_us = static_cast<uint64>(time_delta.ToInternalValue());
   trace::common::ClockInfo clock_info = {};
   trace::common::GetClockInfo(&clock_info);
   if (clock_info.tsc_info.frequency == 0)
@@ -1277,7 +1221,7 @@ struct FakeAsanBlock {
   }
 
   // Ensures that this block has a valid block header.
-  bool TestBlockMetadata() {
+  bool TestBlockHeader() {
     if (!is_initialized)
       return false;
 
@@ -1293,27 +1237,6 @@ struct FakeAsanBlock {
     EXPECT_EQ(alloc_alignment_log, block_header->alignment_log);
     EXPECT_TRUE(block_header->alloc_stack != NULL);
     EXPECT_TRUE(proxy->IsAllocated(block_header));
-    for (const uint8* pos = buffer_align_begin;
-         pos < reinterpret_cast<const uint8*>(block_header);
-         ++pos) {
-      EXPECT_EQ(Shadow::kHeapLeftRedzone,
-                Shadow::GetShadowMarkerForAddress(pos));
-    }
-    for (const uint8* pos = reinterpret_cast<const uint8*>(block_header);
-         pos < user_ptr;
-         ++pos) {
-      EXPECT_EQ(Shadow::kHeapBlockHeaderByte,
-                Shadow::GetShadowMarkerForAddress(pos));
-    }
-    const uint8* aligned_trailer_begin = reinterpret_cast<const uint8*>(
-        common::AlignUp(reinterpret_cast<size_t>(user_ptr) + user_alloc_size,
-                        Shadow::kShadowGranularity));
-    for (const uint8* pos = aligned_trailer_begin;
-         pos < buffer_align_begin + asan_alloc_size;
-         ++pos) {
-      EXPECT_EQ(Shadow::kHeapRightRedzone,
-                Shadow::GetShadowMarkerForAddress(pos));
-    }
 
     void* tmp_user_pointer = NULL;
     size_t tmp_user_size = 0;
@@ -1412,7 +1335,7 @@ TEST_F(HeapTest, InitializeAsanBlock) {
     FakeAsanBlock fake_block(&proxy_, alloc_alignment_log);
     const size_t kAllocSize = 100;
     EXPECT_TRUE(fake_block.InitializeBlock(kAllocSize));
-    EXPECT_TRUE(fake_block.TestBlockMetadata());
+    EXPECT_TRUE(fake_block.TestBlockHeader());
   }
 }
 
@@ -1423,7 +1346,7 @@ TEST_F(HeapTest, MarkBlockAsQuarantined) {
     FakeAsanBlock fake_block(&proxy_, alloc_alignment_log);
     const size_t kAllocSize = 100;
     EXPECT_TRUE(fake_block.InitializeBlock(kAllocSize));
-    EXPECT_TRUE(fake_block.TestBlockMetadata());
+    EXPECT_TRUE(fake_block.TestBlockHeader());
     EXPECT_TRUE(fake_block.MarkBlockAsQuarantined());
   }
 }
@@ -1435,7 +1358,7 @@ TEST_F(HeapTest, DestroyAsanBlock) {
     FakeAsanBlock fake_block(&proxy_, alloc_alignment_log);
     const size_t kAllocSize = 100;
     EXPECT_TRUE(fake_block.InitializeBlock(kAllocSize));
-    EXPECT_TRUE(fake_block.TestBlockMetadata());
+    EXPECT_TRUE(fake_block.TestBlockHeader());
     EXPECT_TRUE(fake_block.MarkBlockAsQuarantined());
 
     TestHeapProxy::BlockHeader* block_header = proxy_.UserPointerToBlockHeader(
@@ -1474,7 +1397,7 @@ TEST_F(HeapTest, CloneBlock) {
     FakeAsanBlock fake_block(&proxy_, alloc_alignment_log);
     const size_t kAllocSize = 100;
     EXPECT_TRUE(fake_block.InitializeBlock(kAllocSize));
-    EXPECT_TRUE(fake_block.TestBlockMetadata());
+    EXPECT_TRUE(fake_block.TestBlockHeader());
     // Fill the block with a non zero value.
     memset(fake_block.user_ptr, 0xEE, kAllocSize);
     EXPECT_TRUE(fake_block.MarkBlockAsQuarantined());
@@ -1611,152 +1534,10 @@ TEST_F(HeapTest, GetAllocSizeViaShadow) {
   ASSERT_EQ(kAllocSize, proxy_.Size(0, mem));
   size_t real_alloc_size = TestHeapProxy::GetAllocSize(kAllocSize);
   uint8* header_begin = TestHeapProxy::UserPointerToAsanPointer(mem);
-  for (size_t i = 0; i < real_alloc_size; ++i) {
-    EXPECT_EQ(real_alloc_size, Shadow::GetAllocSize(header_begin + i));
+  for (size_t i = real_alloc_size - 1; i < real_alloc_size; ++i) {
+    ASSERT_EQ(real_alloc_size, Shadow::GetAllocSize(header_begin + i));
   }
   ASSERT_TRUE(proxy_.Free(0, mem));
-}
-
-TEST_F(HeapTest, FindBlockBeginningViaShadow) {
-  const size_t kAllocSize = 100;
-  LPVOID mem = proxy_.Alloc(0, kAllocSize);
-  ASSERT_TRUE(mem != NULL);
-
-  size_t real_alloc_size = TestHeapProxy::GetAllocSize(kAllocSize);
-  uint8* header_begin = TestHeapProxy::UserPointerToAsanPointer(mem);
-  for (size_t i = 0; i < real_alloc_size; ++i) {
-    EXPECT_EQ(header_begin, Shadow::FindBlockBeginning(header_begin + i));
-  }
-  EXPECT_EQ(NULL, Shadow::FindBlockBeginning(header_begin - 1));
-  EXPECT_EQ(NULL,
-            Shadow::FindBlockBeginning(header_begin + real_alloc_size + 1));
-  ASSERT_TRUE(proxy_.Free(0, mem));
-}
-
-TEST_F(HeapTest, SubsampledAllocationGuards) {
-  proxy_.set_allocation_guard_rate(0.5);
-
-  size_t guarded_allocations = 0;
-  size_t unguarded_allocations = 0;
-
-  // Make a handful of allocations.
-  const size_t kAllocationCount = 10000;
-  const size_t kAllocationSizes[] = {
-      1, 2, 4, 8, 14, 30, 128, 237, 500, 1000, 2036 };
-  std::vector<void*> allocations;
-  for (size_t i = 0; i < kAllocationCount; ++i) {
-    size_t alloc_size = kAllocationSizes[i % arraysize(kAllocationSizes)];
-    void* alloc = proxy_.Alloc(0, alloc_size);
-    EXPECT_TRUE(alloc != NULL);
-
-    // Determine if the allocation has guards or not.
-    TestHeapProxy::BlockHeader* header =
-        proxy_.UserPointerToBlockHeader(alloc);
-    if (header == NULL) {
-      ++unguarded_allocations;
-    } else {
-      ++guarded_allocations;
-    }
-
-    // Delete half of the allocations immediately, and keep half of them
-    // around for longer. This puts more of a stress test on the quarantine
-    // itself.
-    if (base::RandDouble() < 0.5) {
-      EXPECT_TRUE(proxy_.Free(0, alloc));
-    } else {
-      allocations.push_back(alloc);
-    }
-  }
-
-  // Free the outstanding allocations.
-  for (size_t i = 0; i < allocations.size(); ++i)
-    EXPECT_TRUE(proxy_.Free(0, allocations[i]));
-
-  // Clear the quarantine. This should free up the remaining instrumented
-  // but quarantined blocks.
-  EXPECT_NO_FATAL_FAILURE(proxy_.PurgeQuarantine());
-
-  // This could theoretically fail, but that would imply an extremely bad
-  // implementation of the underlying random number generator. There are 10000
-  // allocations. Since this is effectively a fair coin toss we expect a
-  // standard deviation of 0.5 * sqrt(10000) = 50. A 10% margin is
-  // 1000 / 50 = 20 standard deviations. For |z| > 20, the p-value is 5.5e-89,
-  // or 89 nines of confidence. That should keep any flake largely at bay.
-  // Thus, if this fails it's pretty much certain the implementation is at
-  // fault.
-  EXPECT_LT(4 * kAllocationCount / 10, guarded_allocations);
-  EXPECT_GT(6 * kAllocationCount / 10, guarded_allocations);
-}
-
-TEST_F(HeapTest, AsanPointerToBlockHeaderViaShadow) {
-  const size_t kAllocSize = 100;
-  LPVOID mem = proxy_.Alloc(0, kAllocSize);
-  ASSERT_TRUE(mem != NULL);
-  uint8* asan_pointer = TestHeapProxy::UserPointerToAsanPointer(mem);
-  EXPECT_NE(reinterpret_cast<uint8*>(NULL), asan_pointer);
-  EXPECT_EQ(TestHeapProxy::AsanPointerToBlockHeader(asan_pointer),
-      reinterpret_cast<const void*>(Shadow::AsanPointerToBlockHeader(
-          asan_pointer)));
-  EXPECT_TRUE(proxy_.Free(0, mem));
-}
-
-TEST_F(HeapTest, WalkBlocksWithShadowWalker) {
-  const size_t kAllocSize = 100;
-  size_t real_alloc_size = TestHeapProxy::GetAllocSize(kAllocSize);
-
-  // In this test we'll manually initialize 3 blocks inside a heap allocation,
-  // ensuring that the blocks are all in the same heap slab.
-
-  const size_t kNumberOfBlocks = 3;
-  size_t outer_block_size = kNumberOfBlocks * real_alloc_size;
-
-  // The outer block that will contain the 3 blocks.
-  scoped_ptr<uint8> outer_block(new uint8[outer_block_size]);
-
-  // The user pointers to the nested blocks.
-  uint8* user_pointers[kNumberOfBlocks];
-
-  StackCapture stack;
-  stack.InitFromStack();
-
-  // Initialize the blocks with random data.
-  for (size_t i = 0; i < kNumberOfBlocks; ++i) {
-    user_pointers[i] = reinterpret_cast<uint8*>(
-        TestHeapProxy::InitializeAsanBlock(
-            outer_block.get() + i * real_alloc_size,
-        kAllocSize,
-        real_alloc_size,
-        Shadow::kShadowGranularityLog,
-        stack));
-    base::RandBytes(user_pointers[i], kAllocSize);
-  }
-
-  ShadowWalker walker(outer_block.get(), outer_block.get() + outer_block_size);
-
-  const uint8* walker_block = NULL;
-  for (size_t i = 0; i < kNumberOfBlocks; ++i) {
-    EXPECT_TRUE(walker.Next(&walker_block));
-    EXPECT_EQ(TestHeapProxy::UserPointerToAsanPointer(user_pointers[i]),
-              walker_block);
-    EXPECT_EQ(TestHeapProxy::UserPointerToBlockHeader(user_pointers[i]),
-         reinterpret_cast<const TestHeapProxy::BlockHeader*>(
-             Shadow::AsanPointerToBlockHeader(walker_block)));
-  }
-
-  EXPECT_FALSE(walker.Next(&walker_block));
-
-  walker.Reset();
-  EXPECT_TRUE(walker.Next(&walker_block));
-  EXPECT_EQ(TestHeapProxy::UserPointerToAsanPointer(user_pointers[0]),
-            walker_block);
-  EXPECT_EQ(TestHeapProxy::UserPointerToBlockHeader(user_pointers[0]),
-      reinterpret_cast<const TestHeapProxy::BlockHeader*>(
-          Shadow::AsanPointerToBlockHeader(walker_block)));
-
-  // Clear the shadow memory. As those blocks have been manually initialized
-  // they can't go into the quarantine and we need to clean their metadata
-  // manually.
-  Shadow::Unpoison(outer_block.get(), outer_block_size);
 }
 
 }  // namespace asan

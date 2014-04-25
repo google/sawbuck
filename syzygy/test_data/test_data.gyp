@@ -48,24 +48,12 @@
       'copies': [
         {
           'destination': '<(PRODUCT_DIR)/test_data',
-          'conditions': [
+          'files': [
             # We rely on pe.gyp:test_dll producing these
             # intermediate/auxiliary output files.
-            ['"<(GENERATOR)"=="ninja" or "<(GENERATOR)"=="msvs-ninja"', {
-              'files': [
-                '<(PRODUCT_DIR)/obj/syzygy/pe/test_dll.gen/'
-                    'test_dll_label_test_func.obj',
-                '<(PRODUCT_DIR)/export_dll.dll.lib',
-                '<(PRODUCT_DIR)/obj/syzygy/pe/test_dll_no_private_symbols.lib',
-              ],
-            }],
-            ['"<(GENERATOR)"=="msvs"', {
-              'files': [
-                '<(PRODUCT_DIR)/obj/test_dll/test_dll_label_test_func.obj',
-                '<(PRODUCT_DIR)/lib/export_dll.dll.lib',
-                '<(PRODUCT_DIR)/lib/test_dll_no_private_symbols.lib',
-              ],
-            }],
+            '<(PRODUCT_DIR)/obj/test_dll/test_dll_label_test_func.obj',
+            '<(PRODUCT_DIR)/lib/export_dll.lib',
+            '<(PRODUCT_DIR)/lib/test_dll_no_private_symbols.lib',
           ],
         },
       ],
@@ -93,7 +81,7 @@
             '<(PRODUCT_DIR)/test_data/call_trace_instrumented_test_dll.dll.pdb',
           ],
           'action': [
-            '<(PRODUCT_DIR)/instrument.exe',
+            '"<(PRODUCT_DIR)/instrument.exe"',
             '--mode=calltrace',
             '--input-image=<(PRODUCT_DIR)/test_data/test_dll.dll',
             '--input-pdb=<(PRODUCT_DIR)/test_data/test_dll.dll.pdb',
@@ -129,7 +117,7 @@
             '<(PRODUCT_DIR)/test_data/profile_instrumented_test_dll.dll.pdb',
           ],
           'action': [
-            '<(PRODUCT_DIR)/instrument.exe',
+            '"<(PRODUCT_DIR)/instrument.exe"',
             '--mode=profile',
             '--input-image=<(PRODUCT_DIR)/test_data/test_dll.dll',
             '--input-pdb=<(PRODUCT_DIR)/test_data/test_dll.dll.pdb',
@@ -167,7 +155,7 @@
                 'basic_block_entry_instrumented_test_dll.dll.pdb',
           ],
           'action': [
-            '<(PRODUCT_DIR)/instrument.exe',
+            '"<(PRODUCT_DIR)/instrument.exe"',
             '--mode=bbentry',
             '--input-image=<(PRODUCT_DIR)/test_data/test_dll.dll',
             '--input-pdb=<(PRODUCT_DIR)/test_data/test_dll.dll.pdb',
@@ -203,7 +191,7 @@
             '<(PRODUCT_DIR)/test_data/branch_instrumented_test_dll.dll.pdb',
           ],
           'action': [
-            '<(PRODUCT_DIR)/instrument.exe',
+            '"<(PRODUCT_DIR)/instrument.exe"',
             '--mode=branch',
             '--input-image=<(PRODUCT_DIR)/test_data/test_dll.dll',
             '--input-pdb=<(PRODUCT_DIR)/test_data/test_dll.dll.pdb',
@@ -239,7 +227,7 @@
             '<(PRODUCT_DIR)/test_data/coverage_instrumented_test_dll.dll.pdb',
           ],
           'action': [
-            '<(PRODUCT_DIR)/instrument.exe',
+            '"<(PRODUCT_DIR)/instrument.exe"',
             '--mode=coverage',
             '--input-image=<(PRODUCT_DIR)/test_data/test_dll.dll',
             '--input-pdb=<(PRODUCT_DIR)/test_data/test_dll.dll.pdb',
@@ -275,7 +263,7 @@
             '<(PRODUCT_DIR)/test_data/asan_instrumented_test_dll.dll.pdb',
           ],
           'action': [
-            '<(PRODUCT_DIR)/instrument.exe',
+            '"<(PRODUCT_DIR)/instrument.exe"',
             '--mode=asan',
             '--input-image=<(PRODUCT_DIR)/test_data/test_dll.dll',
             '--input-pdb=<(PRODUCT_DIR)/test_data/test_dll.dll.pdb',
@@ -311,7 +299,7 @@
             '<(PRODUCT_DIR)/test_data/randomized_test_dll.dll.pdb',
           ],
           'action': [
-            '<(PRODUCT_DIR)/relink.exe',
+            '"<(PRODUCT_DIR)/relink.exe"',
             '--seed=0',
             '--input-image=<(PRODUCT_DIR)/test_data/test_dll.dll',
             '--input-pdb=<(PRODUCT_DIR)/test_data/test_dll.dll.pdb',

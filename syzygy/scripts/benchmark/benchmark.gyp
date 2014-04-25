@@ -57,6 +57,7 @@
           '<(PRODUCT_DIR)/run_in_snapshot_xp.exe',
           '<(PRODUCT_DIR)/run_in_snapshot_x64.exe',
           '<(PRODUCT_DIR)/syzyasan_rtl.dll',
+          '<(PRODUCT_DIR)/virtualenv.exe',
           '<(PRODUCT_DIR)/wsdump.exe',
         ],
         'setup_file': 'setup.py',
@@ -103,7 +104,7 @@
             '<(success_file)',
           ],
           'action': [
-            '<(PRODUCT_DIR)/py/scripts/python',
+            '"<(PRODUCT_DIR)/py/scripts/python"',
             '<(script_file)',
             '--setup-file', '<(setup_file)',
             '--build-dir', '<(PRODUCT_DIR)/temp/benchmark',
@@ -146,7 +147,7 @@
             '<(PRODUCT_DIR)/profile.bat',
           ],
           'action': [
-            '<(PRODUCT_DIR)/py/scripts/python',
+            '"<(PRODUCT_DIR)/py/scripts/python"',
             'zip_benchmark.py',
             '--root-dir',
             '<(PRODUCT_DIR)',

@@ -78,7 +78,7 @@ class HeapProxy {
     DOUBLE_FREE
   };
 
-  // The different types of errors we can encounter.
+  // The different types of error we can encounter.
   static const char* kHeapUseAfterFree;
   static const char* kHeapBufferUnderFlow;
   static const char* kHeapBufferOverFlow;
@@ -104,6 +104,56 @@ class HeapProxy {
   static HANDLE ToHandle(HeapProxy* proxy);
   static HeapProxy* FromHandle(HANDLE heap);
   // @}
+
+  // @name Heap interface.
+  // @{
+  bool Create(DWORD options,
+              size_t initial_size,
+              size_t maximum_size);
+  bool Destroy();
+  void* Alloc(DWORD flags, size_t bytes);
+  void* ReAlloc(DWORD flags, void* mem, size_t bytes);
+  bool Free(DWORD flags, void* mem);
+  size_t Size(DWORD flags, const void* mem);
+  bool Validate(DWORD flags, const void* mem);
+  size_t Compact(DWORD flags);
+  bool Lock();
+  bool Unlock();
+  bool Walk(PROCESS_HEAP_ENTRY* entry);
+  bool SetInformation(HEAP_INFORMATION_CLASS info_class,
+                      void* info,
+                      size_t info_length);
+  bool QueryInformation(HEAP_INFORMATION_CLASS info_class,
+                        void* info,
+                        size_t info_length,
+                        unsigned long* return_length);
+  // @}
+
+  // Return the handle to the underlying heap.
+  HANDLE heap() { return heap_; }
+
+  // indicates if we own the underlying heap.
+  bool owns_heap() { return owns_heap_; }
+
+  // Initialize this instance with a given heap handle.
+  // @param underlying_heap The underlying heap we should delegate to.
+  // @returns true on success, false otherwise.
+  // @note The caller keeps the ownership of the heap and is responsible for
+  //     releasing it. (@p underlying_heap should have a lifetime exceeding
+  //     this).
+  void UseHeap(HANDLE underlying_heap);
+
+  // Sets the callback that this heap will invoke when heap corruption is
+  // encountered.
+  // @param heap_error_callback The callback to be invoked when heap
+  //     corruption is encountered.
+  void SetHeapErrorCallback(
+      HeapErrorCallback heap_error_callback) {
+    heap_error_callback_ = heap_error_callback;
+  }
+  void ClearHeapErrorCallback() {
+    heap_error_callback_.Reset();
+  }
 
   // Get information about a bad access.
   // @param bad_access_info Will receive the information about this access.
@@ -183,22 +233,6 @@ class HeapProxy {
     return trailer_padding_size_;
   }
 
-  // Sets the allocation guard rate.
-  // @param allocation_guard_rate The allocation guard rate, as a value between
-  //     0 and 1, inclusive.
-  static void set_allocation_guard_rate(float allocation_guard_rate) {
-    DCHECK_LE(0.0f, allocation_guard_rate);
-    DCHECK_GE(1.0f, allocation_guard_rate);
-    allocation_guard_rate_ = allocation_guard_rate;
-  }
-
-  // @returns the allocation guard rate.
-  static float allocation_guard_rate() { return allocation_guard_rate_; }
-
-  // Returns the number of CPU cycles per microsecond on the current machine.
-  // Exposed for testing.
-  static double cpu_cycles_per_us();
-
   // Static initialization of HeapProxy context.
   // @param cache The stack capture cache shared by the HeapProxy.
   static void Init(StackCaptureCache* cache);
@@ -273,62 +307,6 @@ class HeapProxy {
   // @param dst_asan_pointer The pointer to the ASan destination block.
   static void CloneObject(const void* src_asan_pointer,
                           void* dst_asan_pointer);
-
-  // Check if a block is corrupted. This check the block's metadata and its
-  // checksum.
-  // @param block_header A pointer to the block header of the block.
-  // @returns true if the block is corrupted, false otherwise.
-  static bool IsBlockCorrupted(const uint8* block_header);
-
-  // @name Heap interface.
-  // @{
-  bool Create(DWORD options,
-              size_t initial_size,
-              size_t maximum_size);
-  bool Destroy();
-  void* Alloc(DWORD flags, size_t bytes);
-  void* ReAlloc(DWORD flags, void* mem, size_t bytes);
-  bool Free(DWORD flags, void* mem);
-  size_t Size(DWORD flags, const void* mem);
-  bool Validate(DWORD flags, const void* mem);
-  size_t Compact(DWORD flags);
-  bool Lock();
-  bool Unlock();
-  bool Walk(PROCESS_HEAP_ENTRY* entry);
-  bool SetInformation(HEAP_INFORMATION_CLASS info_class,
-                      void* info,
-                      size_t info_length);
-  bool QueryInformation(HEAP_INFORMATION_CLASS info_class,
-                        void* info,
-                        size_t info_length,
-                        unsigned long* return_length);
-  // @}
-
-  // Return the handle to the underlying heap.
-  HANDLE heap() { return heap_; }
-
-  // indicates if we own the underlying heap.
-  bool owns_heap() { return owns_heap_; }
-
-  // Initialize this instance with a given heap handle.
-  // @param underlying_heap The underlying heap we should delegate to.
-  // @returns true on success, false otherwise.
-  // @note The caller keeps the ownership of the heap and is responsible for
-  //     releasing it. (@p underlying_heap should have a lifetime exceeding
-  //     this).
-  void UseHeap(HANDLE underlying_heap);
-
-  // Sets the callback that this heap will invoke when heap corruption is
-  // encountered.
-  // @param heap_error_callback The callback to be invoked when heap
-  //     corruption is encountered.
-  void SetHeapErrorCallback(
-      HeapErrorCallback heap_error_callback) {
-    heap_error_callback_ = heap_error_callback;
-  }
-  void ClearHeapErrorCallback() {
-    heap_error_callback_.Reset();
-  }
 
  protected:
   enum BlockState {
@@ -512,6 +490,16 @@ class HeapProxy {
   // access for random removal and insertion of elements into the quarantine.
   static const size_t kQuarantineShards = 128;
 
+  // Arbitrarily keep 16 megabytes of quarantine per heap by default.
+  static const size_t kDefaultQuarantineMaxSize = 16 * 1024 * 1024;
+
+  // The maximum relative size of a block that will be accepted in quarantine.
+  static const size_t kDefaultQuarantineMaxBlockSize = 4 * 1024 * 1024;
+
+  // By default we use no additional padding between heap blocks, beyond the
+  // header and footer.
+  static const size_t kDefaultTrailerPaddingSize = 0;
+
   // The default alloc granularity. The Windows heap is 8-byte granular, so
   // there's no gain in a lower allocation granularity.
   static const size_t kDefaultAllocGranularity = 8;
@@ -524,10 +512,6 @@ class HeapProxy {
   // The size of the padding that we append to every block (in bytes). Defaults
   // to zero.
   static size_t trailer_padding_size_;
-
-  // The rate at which allocations are intercepted and augmented with
-  // headers/footers.
-  static float allocation_guard_rate_;
 
   // The number of CPU cycles per microsecond on the current machine.
   static double cpu_cycles_per_us_;
@@ -570,20 +554,6 @@ class HeapProxy {
   // at their source. Catching their side effect as early as possible allows the
   // recovery of some useful debugging information.
   HeapErrorCallback heap_error_callback_;
-};
-
-// Utility class which implements an auto lock for a HeapProxy.
-// TODO(sebmarchand): Move this to an asan_heap_util.[h|cc] set of files.
-class HeapLocker {
- public:
-  explicit HeapLocker(HeapProxy* const heap);
-
-  ~HeapLocker();
-
- private:
-  HeapProxy* const heap_;
-
-  DISALLOW_COPY_AND_ASSIGN(HeapLocker);
 };
 
 }  // namespace asan

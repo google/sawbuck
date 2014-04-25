@@ -19,7 +19,6 @@
 #include "base/synchronization/lock.h"
 #include "syzygy/agent/asan/asan_shadow.h"
 #include "syzygy/agent/asan/stack_capture.h"
-#include "syzygy/common/asan_parameters.h"
 
 namespace agent {
 namespace asan {
@@ -72,7 +71,7 @@ class StackCaptureCache {
 
   // @returns the default compression reporting period value.
   static size_t GetDefaultCompressionReportingPeriod() {
-    return common::kDefaultReportingPeriod;
+    return kDefaultCompressionReportingPeriod;
   }
 
   // Sets a new (global) compression reporting period value. Note that this
@@ -110,12 +109,6 @@ class StackCaptureCache {
   // Logs the current stack capture cache statistics. This method is thread
   // safe.
   void LogStatistics();
-
-  // Checks if a StackCapture pointer seems to be valid. This only ensure that
-  // it point into a CachePage.
-  // @param stack_capture The pointer that we want to check.
-  // @returns true if the pointer is valid, false otherwise.
-  bool StackCapturePointerIsValid(const StackCapture* stack_capture);
 
  protected:
   // The container type in which we store the cached stacks. This enforces
@@ -185,6 +178,10 @@ class StackCaptureCache {
   // frames_dead (on behalf of ReturnStackCapture).
   // @param stack_capture The stack capture to be linked into reclaimed_.
   void AddStackCaptureToReclaimedList(StackCapture* stack_capture);
+
+  // The default number of iterations between each compression ratio report.
+  // Zero (0) means do not report.
+  static const size_t kDefaultCompressionReportingPeriod = 0;
 
   // The default number of known stacks sets that we keep.
   static const size_t kKnownStacksSharding = 16;
@@ -261,12 +258,6 @@ class StackCaptureCache::CachePage {
 
   // @returns the number of bytes left in this page.
   size_t bytes_left() const { return kDataSize - bytes_used_; }
-
-  // @returns a pointer to the beginning of the stack captures.
-  uint8* data() { return data_; }
-
-  // @returns the size of the data.
-  size_t data_size() { return kDataSize; }
 
  protected:
   // The parent StackCaptureCache is responsible for cleaning up the linked list

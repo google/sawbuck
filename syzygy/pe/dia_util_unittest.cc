@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "base/bind.h"
-#include "base/file_util.h"
 #include "base/files/file_path.h"
 #include "base/win/scoped_bstr.h"
 #include "base/win/scoped_comptr.h"
@@ -39,8 +38,7 @@ using base::win::ScopedComPtr;
 static const wchar_t kNonsenseStreamName[] =
     L"ThisStreamNameCertainlyDoesNotExist";
 
-// The test_dll output file name configured by the build system.
-static const char kTestDllObjPath[] = TEST_DLL_OBJECT_FILE;
+static const wchar_t kTestDllObjPath[] = L"obj\\test_dll\\test_dll.obj";
 
 struct FilePathLess {
   bool operator()(const std::wstring& lhs, const std::wstring& rhs) {
@@ -291,11 +289,7 @@ TEST_F(DiaUtilVisitorTest, CompilandVisitorTest) {
   ASSERT_LT(0U, compiland_names.size());
 
   // One of the compiland_names should be the test_dll.obj file.
-  std::string test_dll_path(kTestDllObjPath);
-  std::wstring test_dll_wide_path(test_dll_path.begin(), test_dll_path.end());
-  base::FilePath test_dll_obj =
-      base::MakeAbsoluteFilePath(
-          testing::GetOutputRelativePath(test_dll_wide_path.c_str()));
+  base::FilePath test_dll_obj = testing::GetOutputRelativePath(kTestDllObjPath);
   ASSERT_THAT(compiland_names,
               testing::Contains(IsSameFile(test_dll_obj.value())));
 }
@@ -305,11 +299,7 @@ TEST_F(DiaUtilVisitorTest, LineVisitorTest) {
 
   // Start by finding the test dll compiland.
   ScopedComPtr<IDiaSymbol> compiland;
-  std::string test_dll_path(kTestDllObjPath);
-  std::wstring test_dll_wide_path(test_dll_path.begin(), test_dll_path.end());
-  base::FilePath test_dll_obj =
-      base::MakeAbsoluteFilePath(
-          testing::GetOutputRelativePath(test_dll_wide_path.c_str()));
+  base::FilePath test_dll_obj = testing::GetOutputRelativePath(kTestDllObjPath);
   ASSERT_FALSE(compiland_visitor.VisitAllCompilands(
       base::Bind(&DiaUtilVisitorTest::OnCompilandFind,
                  base::Unretained(this),

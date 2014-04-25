@@ -657,9 +657,4 @@ void WINAPI asan_SetCallBack(AsanErrorCallBack callback) {
   asan_runtime->SetErrorCallBack(base::Bind(callback));
 }
 
-// Unittesting seam.
-AsanRuntime* WINAPI asan_GetActiveRuntime() {
-  return asan_runtime;
-}
-
 }  // extern "C"

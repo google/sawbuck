@@ -29,7 +29,6 @@
 #include "syzygy/block_graph/analysis/memory_access_analysis.h"
 #include "syzygy/block_graph/transforms/iterative_transform.h"
 #include "syzygy/block_graph/transforms/named_transform.h"
-#include "syzygy/common/asan_parameters.h"
 #include "syzygy/instrument/transforms/asan_interceptor_filter.h"
 #include "syzygy/instrument/transforms/asan_intercepts.h"
 
@@ -82,12 +81,11 @@ class AsanBasicBlockTransform
       check_access_hooks_(check_access_hooks),
       debug_friendly_(false),
       use_liveness_analysis_(false),
-      remove_redundant_checks_(false),
-      instrumentation_rate_(1.0) {
+      remove_redundant_checks_(false) {
     DCHECK(check_access_hooks != NULL);
   }
 
-  // @name Accessors and mutators.
+  // @name Accessors.
   // @{
   bool debug_friendly() const { return debug_friendly_; }
   void set_debug_friendly(bool flag) { debug_friendly_ = flag; }
@@ -102,9 +100,6 @@ class AsanBasicBlockTransform
     remove_redundant_checks_ = remove_redundant_checks;
   }
 
-  // The instrumentation rate must be in the range [0, 1], inclusive.
-  double instrumentation_rate() const { return instrumentation_rate_; }
-  void set_instrumentation_rate(double instrumentation_rate);
   // @}
 
   // The transform name.
@@ -151,10 +146,6 @@ class AsanBasicBlockTransform
   // memory checks added by this transform.
   bool remove_redundant_checks_;
 
-  // Controls the rate at which reads/writes are instrumented. This is
-  // implemented using random sampling.
-  double instrumentation_rate_;
-
   DISALLOW_COPY_AND_ASSIGN(AsanBasicBlockTransform);
 };
 
@@ -183,7 +174,7 @@ class AsanTransform
                                BlockGraph::Block* header_block);
   // @}
 
-  // @name Accessors and mutators.
+  // @name Accessors.
   // @{
   void set_instrument_dll_name(const base::StringPiece& instrument_dll_name) {
     instrument_dll_name.CopyToString(&asan_dll_name_);
@@ -210,18 +201,6 @@ class AsanTransform
     remove_redundant_checks_ = remove_redundant_checks;
   }
 
-  // The instrumentation rate must be in the range [0, 1], inclusive.
-  double instrumentation_rate() const { return instrumentation_rate_; }
-  void set_instrumentation_rate(double instrumentation_rate);
-
-  // ASAN RTL parameters.
-  const common::InflatedAsanParameters* asan_parameters() const {
-    return asan_parameters_;
-  }
-  void set_asan_parameters(
-      const common::InflatedAsanParameters* asan_parameters) {
-    asan_parameters_ = asan_parameters;
-  }
   // @}
 
   // The name of the DLL that is imported by default.
@@ -243,11 +222,6 @@ class AsanTransform
                             const TransformPolicyInterface* policy,
                             BlockGraph* block_graph,
                             BlockGraph::Block* header_block);
-
-  // Injects runtime parameters into the image.
-  bool PeInjectAsanParameters(const TransformPolicyInterface* policy,
-                              BlockGraph* block_graph,
-                              BlockGraph::Block* header_block);
   // @}
 
   // @name COFF-specific methods.
@@ -277,24 +251,9 @@ class AsanTransform
   // Set iff we should use the functions interceptors.
   bool use_interceptors_;
 
-  // Controls the rate at which reads/writes are instrumented. This is
-  // implemented using random sampling.
-  double instrumentation_rate_;
-
-  // ASAN RTL parameters that will be injected into the instrumented image.
-  // These will be found by the RTL and used to control its behaviour. Allows
-  // for setting parameters at instrumentation time that vary from the defaults.
-  // These can still be overridden by configuring the RTL via an environment
-  // variable.
-  const common::InflatedAsanParameters* asan_parameters_;
-
   // References to the different asan check access import entries. Valid after
   // successful PreBlockGraphIteration.
   AsanBasicBlockTransform::AsanHookMap check_access_hooks_ref_;
-
-  // Block containing any injected runtime parameters. Valid in PE mode after
-  // a successful PostBlockGraphIteration. This is a unittesting seam.
-  block_graph::BlockGraph::Block* asan_parameters_block_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(AsanTransform);

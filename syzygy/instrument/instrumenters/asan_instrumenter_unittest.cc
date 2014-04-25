@@ -34,15 +34,13 @@ class TestAsanInstrumenter : public AsanInstrumenter {
   using AsanInstrumenter::output_image_path_;
   using AsanInstrumenter::output_pdb_path_;
   using AsanInstrumenter::allow_overwrite_;
+  using AsanInstrumenter::old_decomposer_;
   using AsanInstrumenter::no_augment_pdb_;
   using AsanInstrumenter::no_strip_strings_;
   using AsanInstrumenter::filter_path_;
   using AsanInstrumenter::debug_friendly_;
   using AsanInstrumenter::use_liveness_analysis_;
   using AsanInstrumenter::remove_redundant_checks_;
-  using AsanInstrumenter::instrumentation_rate_;
-  using AsanInstrumenter::asan_rtl_options_;
-  using AsanInstrumenter::asan_params_;
   using AsanInstrumenter::kAgentDllAsan;
   using AsanInstrumenter::InstrumentImpl;
   using InstrumenterWithAgent::CreateRelinker;
@@ -148,14 +146,13 @@ TEST_F(AsanInstrumenterTest, ParseMinimalAsan) {
   EXPECT_EQ(std::string(TestAsanInstrumenter::kAgentDllAsan),
             instrumenter_.agent_dll_);
   EXPECT_FALSE(instrumenter_.allow_overwrite_);
+  EXPECT_FALSE(instrumenter_.old_decomposer_);
   EXPECT_FALSE(instrumenter_.no_augment_pdb_);
   EXPECT_FALSE(instrumenter_.no_strip_strings_);
   EXPECT_FALSE(instrumenter_.debug_friendly_);
   EXPECT_TRUE(instrumenter_.use_interceptors_);
   EXPECT_TRUE(instrumenter_.use_liveness_analysis_);
   EXPECT_TRUE(instrumenter_.remove_redundant_checks_);
-  EXPECT_EQ(1.0, instrumenter_.instrumentation_rate_);
-  EXPECT_FALSE(instrumenter_.asan_rtl_options_);
 }
 
 TEST_F(AsanInstrumenterTest, ParseFullAsan) {
@@ -164,6 +161,7 @@ TEST_F(AsanInstrumenterTest, ParseFullAsan) {
   cmd_line_.AppendSwitchASCII("agent", "foo.dll");
   cmd_line_.AppendSwitch("debug-friendly");
   cmd_line_.AppendSwitchPath("input-pdb", input_pdb_path_);
+  cmd_line_.AppendSwitch("old-decomposer");
   cmd_line_.AppendSwitch("no-augment-pdb");
   cmd_line_.AppendSwitch("no-interceptors");
   cmd_line_.AppendSwitch("no-strip-strings");
@@ -171,9 +169,6 @@ TEST_F(AsanInstrumenterTest, ParseFullAsan) {
   cmd_line_.AppendSwitch("overwrite");
   cmd_line_.AppendSwitch("no-liveness-analysis");
   cmd_line_.AppendSwitch("no-redundancy-analysis");
-  cmd_line_.AppendSwitchASCII("instrumentation-rate", "0.5");
-  cmd_line_.AppendSwitchASCII("asan-rtl-options",
-      "--quarantine_size=1024 --quarantine_block_size=512 --ignored");
 
   EXPECT_TRUE(instrumenter_.ParseCommandLine(&cmd_line_));
 
@@ -184,22 +179,13 @@ TEST_F(AsanInstrumenterTest, ParseFullAsan) {
   EXPECT_EQ(test_dll_filter_path_, instrumenter_.filter_path_);
   EXPECT_EQ(std::string("foo.dll"), instrumenter_.agent_dll_);
   EXPECT_TRUE(instrumenter_.allow_overwrite_);
+  EXPECT_TRUE(instrumenter_.old_decomposer_);
   EXPECT_TRUE(instrumenter_.no_augment_pdb_);
   EXPECT_TRUE(instrumenter_.no_strip_strings_);
   EXPECT_TRUE(instrumenter_.debug_friendly_);
   EXPECT_FALSE(instrumenter_.use_interceptors_);
   EXPECT_FALSE(instrumenter_.use_liveness_analysis_);
   EXPECT_FALSE(instrumenter_.remove_redundant_checks_);
-  EXPECT_EQ(0.5, instrumenter_.instrumentation_rate_);
-  EXPECT_TRUE(instrumenter_.asan_rtl_options_);
-
-  // We check that the requested RTL options were parsed, and that others are
-  // left to their defaults. We don't check all the parameters as other
-  // unittests check the behaviour of the parser.
-  EXPECT_EQ(1024u, instrumenter_.asan_params_.quarantine_size);
-  EXPECT_EQ(512u, instrumenter_.asan_params_.quarantine_block_size);
-  EXPECT_EQ(common::kDefaultMaxNumFrames,
-            instrumenter_.asan_params_.max_num_frames);
 }
 
 TEST_F(AsanInstrumenterTest, InstrumentImpl) {
@@ -233,22 +219,6 @@ TEST_F(AsanInstrumenterTest, SucceedsWithValidFilter) {
   EXPECT_TRUE(instrumenter_.ParseCommandLine(&cmd_line_));
   EXPECT_TRUE(instrumenter_.CreateRelinker());
   EXPECT_TRUE(instrumenter_.InstrumentImpl());
-}
-
-TEST_F(AsanInstrumenterTest, FailsWithInvalidInstrumentationRate) {
-  cmd_line_.AppendSwitchPath("input-image", input_image_path_);
-  cmd_line_.AppendSwitchPath("output-image", output_image_path_);
-  cmd_line_.AppendSwitchASCII("instrumentation-rate", "forty.three");
-
-  EXPECT_FALSE(instrumenter_.ParseCommandLine(&cmd_line_));
-}
-
-TEST_F(AsanInstrumenterTest, FailsWithInvalidAsanRtlOptions) {
-  cmd_line_.AppendSwitchPath("input-image", input_image_path_);
-  cmd_line_.AppendSwitchPath("output-image", output_image_path_);
-  cmd_line_.AppendSwitchASCII("asan-rtl-options", "--quarantine_size=foobar");
-
-  EXPECT_FALSE(instrumenter_.ParseCommandLine(&cmd_line_));
 }
 
 }  // namespace instrumenters

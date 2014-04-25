@@ -26,12 +26,11 @@
 {
   'variables': {
     'unittests': [
-      # Archive unittests.
-      '<(src)/syzygy/ar/ar.gyp:ar_unittests',
+      # Common tests.
+      '<(src)/syzygy/agent/common/common.gyp:agent_common_unittests',
 
       # Agent tests.
       '<(src)/syzygy/agent/asan/asan.gyp:syzyasan_rtl_unittests',
-      '<(src)/syzygy/agent/common/common.gyp:agent_common_unittests',
       '<(src)/syzygy/agent/coverage/coverage.gyp:coverage_unittests',
       '<(src)/syzygy/agent/profiler/profiler.gyp:profile_unittests',
       '<(src)/syzygy/agent/basic_block_entry/basic_block_entry.gyp:'
@@ -95,9 +94,6 @@
 
       # Simulator tests.
       '<(src)/syzygy/simulate/simulate.gyp:simulate_unittests',
-
-      # Swap Import tests.
-      '<(src)/syzygy/swapimport/swapimport.gyp:swapimport_unittests',
 
       # Trace tests.
       '<(src)/syzygy/trace/client/client.gyp:rpc_client_lib_unittests',

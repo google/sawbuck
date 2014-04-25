@@ -47,11 +47,9 @@ void AddSymbol(const base::StringPiece& symbol_name,
   IMAGE_SYMBOL* orig = &symbols[template_index];
   IMAGE_SYMBOL* symbol = &symbols[symbol_count];
 
-  // Copy the metadata from the template symbol. We set the section number to
-  // zero to indicate that this is an external symbol that has no definition in
-  // this COFF file. It will be satisfied at link time.
+  // Copy the metadata from the template symbol.
   symbol->Value = orig->Value;
-  symbol->SectionNumber = 0;
+  symbol->SectionNumber = orig->SectionNumber;
   symbol->Type = orig->Type;
   symbol->StorageClass = orig->StorageClass;
   symbol->NumberOfAuxSymbols = 0;

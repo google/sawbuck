@@ -97,7 +97,6 @@ EXPORTS
   asan_strlen
   asan_strrchr
   asan_wcsrchr
-  asan_wcschr
   asan_strcmp
   asan_strpbrk
   asan_strstr
@@ -111,7 +110,6 @@ EXPORTS
 
   ; Functions exposed for testing purposes.
   asan_SetInterceptorCallback
-  asan_GetActiveRuntime
 
   ; Functions for the nested heaps.
   asan_PoisonMemoryRange

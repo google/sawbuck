@@ -14,6 +14,9 @@
 //
 // Declares the decomposer, which decomposes a PE file into an ImageLayout and
 // its corresponding BlockGraph.
+//
+// TODO(chrisha): Once the old decomposer has been removed, clean up unused
+//     block attributes.
 
 #ifndef SYZYGY_PE_DECOMPOSER_H_
 #define SYZYGY_PE_DECOMPOSER_H_
@@ -104,8 +107,6 @@ class Decomposer {
   bool CreateBlocksFromCoffGroups();
   // Processes the SectionContribution table, creating code/data blocks from it.
   bool CreateBlocksFromSectionContribs(IDiaSession* session);
- // Processes the Compiland table and finds cold blocks.
-  bool FindColdBlocksFromCompilands(IDiaSession* session);
   // Creates gap blocks to flesh out the image. After this has been run all
   // references should be resolvable.
   bool CreateGapBlocks();
@@ -205,16 +206,6 @@ class Decomposer {
   ImageLayout* image_layout_;
   // The image address space we're decomposing to.
   BlockGraph::AddressSpace* image_;
-  // @}
-
-  // Data structures holding the relation between functions and their cold
-  // blocks outside of the function address space.
-  // @{
-  typedef std::map<core::RelativeAddress, BlockGraph::Block*> ColdBlocks;
-  typedef std::map<BlockGraph::Block*, ColdBlocks> ColdBlocksMap;
-  typedef std::map<BlockGraph::Block*, BlockGraph::Block*> ColdBlocksParent;
-  ColdBlocksMap cold_blocks_;
-  ColdBlocksParent cold_blocks_parent_;
   // @}
 
   // @name Temporaries that are only valid while in DiaBrowser.

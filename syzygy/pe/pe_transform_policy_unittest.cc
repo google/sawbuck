@@ -156,6 +156,53 @@ class PETransformPolicyTest : public testing::PELibUnitTest {
                           b, allow_inline_assembly));
   }
 
+  void TestCodeBlockHasPrivateSymbols(bool old_decomposer) {
+    TestPETransformPolicy policy;
+
+    pe::PEFile pe_file;
+    block_graph::BlockGraph block_graph;
+    pe::ImageLayout image_layout(&block_graph);
+    ASSERT_NO_FATAL_FAILURE(DecomposeTestDll(
+        old_decomposer, &pe_file, &image_layout));
+
+    size_t count = 0;
+    BlockGraph::BlockMap::const_iterator it = block_graph.blocks().begin();
+    for (; it != block_graph.blocks().end(); ++it) {
+      if (it->second.type() != BlockGraph::CODE_BLOCK)
+        continue;
+      if (it->second.attributes() & BlockGraph::PADDING_BLOCK)
+        continue;
+
+      if (!policy.CodeBlockHasPrivateSymbols(&it->second)) {
+        ++count;
+        EXPECT_EQ(it->second.name(), "TestFunctionWithNoPrivateSymbols");
+      }
+    }
+    EXPECT_EQ(1u, count);
+  }
+
+  void TestBasicBlockDisassemblyFilter(bool old_decomposer) {
+    TestPETransformPolicy policy;
+
+    pe::PEFile pe_file;
+    block_graph::BlockGraph block_graph;
+    pe::ImageLayout image_layout(&block_graph);
+    ASSERT_NO_FATAL_FAILURE(DecomposeTestDll(
+        old_decomposer, &pe_file, &image_layout));
+
+    size_t count = 0;
+    BlockGraph::BlockMap::const_iterator it = block_graph.blocks().begin();
+    for (; it != block_graph.blocks().end(); ++it) {
+      if (!policy.BlockIsSafeToBasicBlockDecompose(&it->second))
+        continue;
+
+      // Basic-block decomposition should not fail.
+      block_graph::BasicBlockSubGraph bbsg;
+      block_graph::BasicBlockDecomposer bbdecomp(&it->second, &bbsg);
+      EXPECT_TRUE(bbdecomp.Decompose());
+    }
+  }
+
   BlockGraph image_;
 };
 
@@ -201,11 +248,27 @@ TEST_F(PETransformPolicyTest,
 }
 
 TEST_F(PETransformPolicyTest,
+       CodeBlockAttributesAreBasicBlockSafeErroredDisassembly) {
+  ASSERT_NO_FATAL_FAILURE(TestAttributes(
+      BlockGraph::ERRORED_DISASSEMBLY, false, false));
+  ASSERT_NO_FATAL_FAILURE(TestAttributes(
+      BlockGraph::ERRORED_DISASSEMBLY, true, false));
+}
+
+TEST_F(PETransformPolicyTest,
        CodeBlockAttributesAreBasicBlockSafeExceptionHandling) {
   ASSERT_NO_FATAL_FAILURE(TestAttributes(
       BlockGraph::HAS_EXCEPTION_HANDLING, false, false));
   ASSERT_NO_FATAL_FAILURE(TestAttributes(
       BlockGraph::HAS_EXCEPTION_HANDLING, true, false));
+}
+
+TEST_F(PETransformPolicyTest,
+       CodeBlockAttributesAreBasicBlockSafeDisassembledPastEnd) {
+  ASSERT_NO_FATAL_FAILURE(TestAttributes(
+      BlockGraph::DISASSEMBLED_PAST_END, false, false));
+  ASSERT_NO_FATAL_FAILURE(TestAttributes(
+      BlockGraph::DISASSEMBLED_PAST_END, true, false));
 }
 
 TEST_F(PETransformPolicyTest,
@@ -220,28 +283,12 @@ TEST_F(PETransformPolicyTest,
       true));
 }
 
-TEST_F(PETransformPolicyTest, CodeBlockHasPrivateSymbols) {
-  TestPETransformPolicy policy;
+TEST_F(PETransformPolicyTest, CodeBlockHasPrivateSymbolsNewDecomposer) {
+  EXPECT_NO_FATAL_FAILURE(TestCodeBlockHasPrivateSymbols(false));
+}
 
-  pe::PEFile pe_file;
-  block_graph::BlockGraph block_graph;
-  pe::ImageLayout image_layout(&block_graph);
-  ASSERT_NO_FATAL_FAILURE(DecomposeTestDll(&pe_file, &image_layout));
-
-  size_t count = 0;
-  BlockGraph::BlockMap::const_iterator it = block_graph.blocks().begin();
-  for (; it != block_graph.blocks().end(); ++it) {
-    if (it->second.type() != BlockGraph::CODE_BLOCK)
-      continue;
-    if (it->second.attributes() & BlockGraph::PADDING_BLOCK)
-      continue;
-
-    if (!policy.CodeBlockHasPrivateSymbols(&it->second)) {
-      ++count;
-      EXPECT_EQ(it->second.name(), "TestFunctionWithNoPrivateSymbols");
-    }
-  }
-  EXPECT_EQ(1u, count);
+TEST_F(PETransformPolicyTest, CodeBlockHasPrivateSymbolsOldDecomposer) {
+  EXPECT_NO_FATAL_FAILURE(TestCodeBlockHasPrivateSymbols(true));
 }
 
 TEST_F(PETransformPolicyTest, NoLabelsHasInvalidLayout) {
@@ -555,25 +602,12 @@ TEST_F(PETransformPolicyTest, ReferenceIsSafeToRedirect) {
   EXPECT_TRUE(policy.ReferenceIsSafeToRedirect(b, ref));
 }
 
-TEST_F(PETransformPolicyTest, BasicBlockDisassemblyFilter) {
-  TestPETransformPolicy policy;
+TEST_F(PETransformPolicyTest, BasicBlockDisassemblyFilterOldDecomposer) {
+  ASSERT_NO_FATAL_FAILURE(TestBasicBlockDisassemblyFilter(true));
+}
 
-  pe::PEFile pe_file;
-  block_graph::BlockGraph block_graph;
-  pe::ImageLayout image_layout(&block_graph);
-  ASSERT_NO_FATAL_FAILURE(DecomposeTestDll(&pe_file, &image_layout));
-
-  size_t count = 0;
-  BlockGraph::BlockMap::const_iterator it = block_graph.blocks().begin();
-  for (; it != block_graph.blocks().end(); ++it) {
-    if (!policy.BlockIsSafeToBasicBlockDecompose(&it->second))
-      continue;
-
-    // Basic-block decomposition should not fail.
-    block_graph::BasicBlockSubGraph bbsg;
-    block_graph::BasicBlockDecomposer bbdecomp(&it->second, &bbsg);
-    EXPECT_TRUE(bbdecomp.Decompose());
-  }
+TEST_F(PETransformPolicyTest, BasicBlockDisassemblyFilterNewDecomposer) {
+  ASSERT_NO_FATAL_FAILURE(TestBasicBlockDisassemblyFilter(false));
 }
 
 }  // namespace pe

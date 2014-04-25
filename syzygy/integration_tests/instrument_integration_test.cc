@@ -16,8 +16,6 @@
 #include "base/string_util.h"
 #include "base/stringprintf.h"
 #include "base/files/file_path.h"
-#include "base/win/pe_image.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "syzygy/agent/asan/asan_rtl_impl.h"
 #include "syzygy/agent/asan/asan_runtime.h"
@@ -73,20 +71,14 @@ int asan_error_count;
 // Contains the last ASAN error reported.
 agent::asan::AsanErrorInfo last_asan_error;
 
-void AsanCallback(agent::asan::AsanErrorInfo* info) {
+void AsanSafeCallback(agent::asan::AsanErrorInfo* info) {
   asan_error_count++;
   last_asan_error = *info;
-  // We want to prevent write errors from corrupting the underlying block hence
-  // we stop the flow of execution by raising an exception. The faulty calls are
-  // themselves wrapped in try/catch statements, and continue executing
-  // afterwards. Thus, they clean up after themselves.
-  //
-  // In the case of block corruption we elect to allow the code to continue
-  // executing so that the normal code path is taken. If we raise an exception
-  // this actually prevents the AsanHeap cleanup code from continuing, and we
-  // leak memory.
-  if (info->error_type != CORRUPTED_BLOCK)
-    ::RaiseException(EXCEPTION_ARRAY_BOUNDS_EXCEEDED, 0, 0, NULL);
+}
+
+void AsanSafeCallbackWithException(agent::asan::AsanErrorInfo* info) {
+  AsanSafeCallback(info);
+  ::RaiseException(EXCEPTION_ARRAY_BOUNDS_EXCEEDED, 0, 0, NULL);
 }
 
 void ResetAsanErrors() {
@@ -102,49 +94,6 @@ void SetAsanDefaultCallBack(AsanErrorCallBack callback) {
 
   set_callback(callback);
 };
-
-agent::asan::AsanRuntime* GetActiveAsanRuntime() {
-  HMODULE asan_module = GetModuleHandle(L"syzyasan_rtl.dll");
-  DCHECK(asan_module != NULL);
-
-  typedef agent::asan::AsanRuntime* (WINAPI *AsanGetActiveRuntimePtr)();
-  AsanGetActiveRuntimePtr asan_get_active_runtime =
-      reinterpret_cast<AsanGetActiveRuntimePtr>(
-      ::GetProcAddress(asan_module, "asan_GetActiveRuntime"));
-  DCHECK_NE(reinterpret_cast<AsanGetActiveRuntimePtr>(NULL),
-            asan_get_active_runtime);
-
-  return (*asan_get_active_runtime)();
-};
-
-// Filters non-continuable exceptions in the given module.
-int FilterExceptionsInModule(HMODULE module,
-                             unsigned int code,
-                             struct _EXCEPTION_POINTERS* ep) {
-  // Do a basic sanity check on the input parameters.
-  if (module == NULL ||
-      code != EXCEPTION_NONCONTINUABLE_EXCEPTION ||
-      ep == NULL ||
-      ep->ContextRecord == NULL ||
-      ep->ExceptionRecord == NULL) {
-    return EXCEPTION_CONTINUE_SEARCH;
-  }
-
-  // Get the module extents in memory.
-  base::win::PEImage image(module);
-  uint8* module_start = reinterpret_cast<uint8*>(module);
-  uint8* module_end = module_start +
-      image.GetNTHeaders()->OptionalHeader.SizeOfImage;
-
-  // Filter exceptions where the return address originates from within the
-  // instrumented module.
-  uint8** ebp = reinterpret_cast<uint8**>(ep->ContextRecord->Ebp);
-  uint8* ret = ebp[1];
-  if (ret >= module_start && ret < module_end)
-    return EXCEPTION_EXECUTE_HANDLER;
-
-  return EXCEPTION_CONTINUE_SEARCH;
-}
 
 class TestingProfileGrinder : public grinder::grinders::ProfileGrinder {
  public:
@@ -189,7 +138,7 @@ class InstrumentAppIntegrationTest : public testing::PELibUnitTest {
 
     // Initialize the (potential) input and output path values.
     base::FilePath abs_input_dll_path_ =
-        testing::GetExeRelativePath(testing::kIntegrationTestsDllName);
+        testing::GetExeRelativePath(L"integration_tests_dll.dll");
     input_dll_path_ = testing::GetRelativePath(abs_input_dll_path_);
     output_dll_path_ = temp_dir_.Append(input_dll_path_.BaseName());
 
@@ -275,7 +224,6 @@ class InstrumentAppIntegrationTest : public testing::PELibUnitTest {
                       size_t max_tries,
                       bool unload) {
     ResetAsanErrors();
-    EXPECT_NO_FATAL_FAILURE(SetAsanDefaultCallBack(AsanCallback));
 
     for (size_t i = 0; i < max_tries; ++i) {
       InvokeTestDllFunction(test);
@@ -304,25 +252,10 @@ class InstrumentAppIntegrationTest : public testing::PELibUnitTest {
     return true;
   }
 
-  bool FilteredAsanErrorCheck(testing::EndToEndTestId test,
-                              BadAccessKind kind,
-                              AccessMode mode,
-                              size_t size,
-                              size_t max_tries,
-                              bool unload) {
-    __try {
-      return AsanErrorCheck(test, kind, mode, size, max_tries, unload);
-    } __except (FilterExceptionsInModule(module_,
-                                         GetExceptionCode(),
-                                         GetExceptionInformation())) {
-      // If the exception is of the expected type and originates from the
-      // instrumented module, then we indicate that no ASAN error was
-      // detected.
-      return false;
-    }
-  }
-
   void AsanErrorCheckTestDll() {
+    ASSERT_NO_FATAL_FAILURE(SetAsanDefaultCallBack(
+        AsanSafeCallbackWithException));
+
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanRead8BufferOverflowTestId,
         HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 1, 1, false));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanRead16BufferOverflowTestId,
@@ -378,44 +311,8 @@ class InstrumentAppIntegrationTest : public testing::PELibUnitTest {
         USE_AFTER_FREE, ASAN_WRITE_ACCESS, 8, 1, false));
   }
 
-  void AsanErrorCheckSampledAllocations() {
-    // This assumes we have a 50% allocation sampling rate.
-
-    // Run ASAN tests over and over again until we've done enough of them. We
-    // only check the read operations as the writes may actually cause
-    // corruption if not caught.
-    size_t good = 0;
-    size_t test = 0;
-    while (test < 1000) {
-      good += FilteredAsanErrorCheck(testing::kAsanRead8BufferOverflowTestId,
-          HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 1, 1, false) ? 1 : 0;
-      good += FilteredAsanErrorCheck(testing::kAsanRead16BufferOverflowTestId,
-          HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 2, 1, false) ? 1 : 0;
-      good += FilteredAsanErrorCheck(testing::kAsanRead32BufferOverflowTestId,
-          HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 4, 1, false) ? 1 : 0;
-      good += FilteredAsanErrorCheck(testing::kAsanRead64BufferOverflowTestId,
-          HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 8, 1, false) ? 1 : 0;
-      test += 4;
-
-      good += FilteredAsanErrorCheck(testing::kAsanRead8BufferUnderflowTestId,
-          HEAP_BUFFER_UNDERFLOW, ASAN_READ_ACCESS, 1, 1, false) ? 1 : 0;
-      good += FilteredAsanErrorCheck(testing::kAsanRead16BufferUnderflowTestId,
-          HEAP_BUFFER_UNDERFLOW, ASAN_READ_ACCESS, 2, 1, false) ? 1 : 0;
-      good += FilteredAsanErrorCheck(testing::kAsanRead32BufferUnderflowTestId,
-          HEAP_BUFFER_UNDERFLOW, ASAN_READ_ACCESS, 4, 1, false) ? 1 : 0;
-      good += FilteredAsanErrorCheck(testing::kAsanRead64BufferUnderflowTestId,
-          HEAP_BUFFER_UNDERFLOW, ASAN_READ_ACCESS, 8, 1, false) ? 1 : 0;
-      test += 4;
-    }
-
-    // We expect half of the bugs to have been found, as the allocations are
-    // subsampled. With 1000 allocations this gives us 10 nines of confidence
-    // that the detection rate will be within 50 +/- 10%.
-    EXPECT_LE(4 * test / 10, good);
-    EXPECT_GE(6 * test / 10, good);
-  }
-
   void AsanErrorCheckInterceptedFunctions() {
+    ASSERT_NO_FATAL_FAILURE(SetAsanDefaultCallBack(AsanSafeCallback));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanMemsetOverflow,
         HEAP_BUFFER_OVERFLOW, ASAN_WRITE_ACCESS, 1, 1, false));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanMemsetUnderflow,
@@ -432,11 +329,8 @@ class InstrumentAppIntegrationTest : public testing::PELibUnitTest {
         HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 1, 1, false));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanMemmoveReadUnderflow,
         HEAP_BUFFER_UNDERFLOW, ASAN_READ_ACCESS, 1, 1, false));
-    // In this test both buffers passed to memmove have been freed, but as the
-    // interceptor starts by checking the source buffer this use after free is
-    // seen as an invalid read access.
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanMemmoveUseAfterFree,
-        USE_AFTER_FREE, ASAN_READ_ACCESS, 1, 1, false));
+        USE_AFTER_FREE, ASAN_WRITE_ACCESS, 1, 1, false));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanMemmoveWriteOverflow,
         HEAP_BUFFER_OVERFLOW, ASAN_WRITE_ACCESS, 1, 1, false));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanMemmoveWriteUnderflow,
@@ -469,12 +363,6 @@ class InstrumentAppIntegrationTest : public testing::PELibUnitTest {
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanWcsrchrUnderflow,
         HEAP_BUFFER_UNDERFLOW, ASAN_READ_ACCESS, 1, 1, false));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanWcsrchrUseAfterFree,
-        USE_AFTER_FREE, ASAN_READ_ACCESS, 1, 1, false));
-    EXPECT_TRUE(AsanErrorCheck(testing::kAsanWcschrOverflow,
-        HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 1, 1, false));
-    EXPECT_TRUE(AsanErrorCheck(testing::kAsanWcschrUnderflow,
-        HEAP_BUFFER_UNDERFLOW, ASAN_READ_ACCESS, 1, 1, false));
-    EXPECT_TRUE(AsanErrorCheck(testing::kAsanWcschrUseAfterFree,
         USE_AFTER_FREE, ASAN_READ_ACCESS, 1, 1, false));
     EXPECT_TRUE(AsanErrorCheck(testing::kAsanStrncpySrcOverflow,
         HEAP_BUFFER_OVERFLOW, ASAN_READ_ACCESS, 1, 1, false));
@@ -790,8 +678,7 @@ class InstrumentAppIntegrationTest : public testing::PELibUnitTest {
       module_names.push_back(image_name.BaseName().value());
     }
 
-    EXPECT_TRUE(ContainsString(module_names,
-                               testing::kIntegrationTestsDllName));
+    EXPECT_TRUE(ContainsString(module_names, L"integration_tests_dll.dll"));
     // If imports are thunked, we expect to find a module entry for the export
     // DLL - otherwise it shouldn't be in there at all.
     if (thunk_imports) {
@@ -879,58 +766,11 @@ TEST_F(InstrumentAppIntegrationTest, AsanEndToEndNoFunctionInterceptors) {
   ASSERT_NO_FATAL_FAILURE(AsanErrorCheckTestDll());
 }
 
-TEST_F(InstrumentAppIntegrationTest, AsanEndToEndWithRtlOptions) {
-  cmd_line_.AppendSwitchASCII(
-      "asan-rtl-options",
-      "--quarantine_size=20000000 --quarantine_block_size=1000000");
-  ASSERT_NO_FATAL_FAILURE(EndToEndTest("asan"));
-  ASSERT_NO_FATAL_FAILURE(EndToEndCheckTestDll());
-  ASSERT_NO_FATAL_FAILURE(AsanErrorCheckTestDll());
-
-  // Get the active runtime and validate its parameters.
-  agent::asan::AsanRuntime* runtime = GetActiveAsanRuntime();
-  ASSERT_TRUE(runtime != NULL);
-  ASSERT_EQ(20000000u, runtime->params().quarantine_size);
-  ASSERT_EQ(1000000u, runtime->params().quarantine_block_size);
-}
-
-TEST_F(InstrumentAppIntegrationTest,
-       AsanEndToEndWithRtlOptionsOverrideWithEnvironment) {
-  base::Environment* env = base::Environment::Create();
-  ASSERT_TRUE(env != NULL);
-  env->SetVar("SYZYGY_ASAN_OPTIONS",
-              "--quarantine_block_size=800000 --ignored_stack_ids=0x1");
-
-  cmd_line_.AppendSwitchASCII(
-      "asan-rtl-options",
-      "--quarantine_size=20000000 --quarantine_block_size=1000000 "
-      "--ignored_stack_ids=0x2");
-  ASSERT_NO_FATAL_FAILURE(EndToEndTest("asan"));
-  ASSERT_NO_FATAL_FAILURE(EndToEndCheckTestDll());
-  ASSERT_NO_FATAL_FAILURE(AsanErrorCheckTestDll());
-
-  // Get the active runtime and validate its parameters.
-  agent::asan::AsanRuntime* runtime = GetActiveAsanRuntime();
-  ASSERT_TRUE(runtime != NULL);
-  ASSERT_EQ(20000000u, runtime->params().quarantine_size);
-  ASSERT_EQ(800000u, runtime->params().quarantine_block_size);
-  ASSERT_THAT(runtime->params().ignored_stack_ids_set,
-              testing::ElementsAre(0x1, 0x2));
-}
-
 TEST_F(InstrumentAppIntegrationTest, FullOptimizedAsanEndToEnd) {
   ASSERT_NO_FATAL_FAILURE(EndToEndTest("asan"));
   ASSERT_NO_FATAL_FAILURE(EndToEndCheckTestDll());
   ASSERT_NO_FATAL_FAILURE(AsanErrorCheckTestDll());
   ASSERT_NO_FATAL_FAILURE(AsanErrorCheckInterceptedFunctions());
-}
-
-TEST_F(InstrumentAppIntegrationTest, SampledAllocationsAsanEndToEnd) {
-  cmd_line_.AppendSwitchASCII("asan-rtl-options",
-                              "--allocation_guard_rate=0.5");
-  ASSERT_NO_FATAL_FAILURE(EndToEndTest("asan"));
-  ASSERT_NO_FATAL_FAILURE(EndToEndCheckTestDll());
-  ASSERT_NO_FATAL_FAILURE(AsanErrorCheckSampledAllocations());
 }
 
 TEST_F(InstrumentAppIntegrationTest, BBEntryEndToEnd) {

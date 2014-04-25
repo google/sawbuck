@@ -19,7 +19,6 @@
 #include "base/float_util.h"
 #include "base/hash.h"
 #include "base/logging.h"
-#include "base/rand_util.h"
 #include "base/string_util.h"
 #include "base/stringprintf.h"
 #include "base/time.h"
@@ -29,7 +28,6 @@
 #include "syzygy/agent/asan/asan_runtime.h"
 #include "syzygy/agent/asan/asan_shadow.h"
 #include "syzygy/common/align.h"
-#include "syzygy/common/asan_parameters.h"
 #include "syzygy/trace/common/clock.h"
 
 namespace agent {
@@ -40,6 +38,29 @@ typedef StackCapture::StackId StackId;
 
 // The first 64kB of the memory are not addressable.
 const uint8* kAddressLowerLimit = reinterpret_cast<uint8*>(0x10000);
+
+// Utility class which implements an auto lock for a HeapProxy.
+class HeapLocker {
+ public:
+  explicit HeapLocker(HeapProxy* const heap) : heap_(heap) {
+    DCHECK(heap != NULL);
+    if (!heap->Lock()) {
+      LOG(ERROR) << "Unable to lock the heap.";
+    }
+  }
+
+  ~HeapLocker() {
+    DCHECK(heap_ != NULL);
+    if (!heap_->Unlock()) {
+      LOG(ERROR) << "Unable to lock the heap.";
+    }
+  }
+
+ private:
+  HeapProxy* const heap_;
+
+  DISALLOW_COPY_AND_ASSIGN(HeapLocker);
+};
 
 // Returns the number of CPU cycles per microsecond.
 double GetCpuCyclesPerUs() {
@@ -83,15 +104,12 @@ void CombineUInt32IntoBlockChecksum(uint32 val, uint32* checksum) {
 }  // namespace
 
 StackCaptureCache* HeapProxy::stack_cache_ = NULL;
-double HeapProxy::cpu_cycles_per_us_ =
-    std::numeric_limits<double>::quiet_NaN();
+double HeapProxy::cpu_cycles_per_us_ = std::numeric_limits<double>::quiet_NaN();
 // The default quarantine and block size for a new Heap.
-size_t HeapProxy::default_quarantine_max_size_ =
-    common::kDefaultQuarantineSize;
+size_t HeapProxy::default_quarantine_max_size_ = kDefaultQuarantineMaxSize;
 size_t HeapProxy::default_quarantine_max_block_size_ =
-    common::kDefaultQuarantineBlockSize;
-size_t HeapProxy::trailer_padding_size_ = common::kDefaultTrailerPaddingSize;
-float HeapProxy::allocation_guard_rate_ = common::kDefaultAllocationGuardRate;
+    kDefaultQuarantineMaxBlockSize;
+size_t HeapProxy::trailer_padding_size_ = kDefaultTrailerPaddingSize;
 const char* HeapProxy::kHeapUseAfterFree = "heap-use-after-free";
 const char* HeapProxy::kHeapBufferUnderFlow = "heap-buffer-underflow";
 const char* HeapProxy::kHeapBufferOverFlow = "heap-buffer-overflow";
@@ -121,9 +139,9 @@ HeapProxy::~HeapProxy() {
 
 void HeapProxy::Init(StackCaptureCache* cache) {
   DCHECK(cache != NULL);
-  default_quarantine_max_size_ = common::kDefaultQuarantineSize;
-  default_quarantine_max_block_size_ = common::kDefaultQuarantineBlockSize;
-  trailer_padding_size_ = common::kDefaultTrailerPaddingSize;
+  default_quarantine_max_size_ = kDefaultQuarantineMaxSize;
+  default_quarantine_max_block_size_ = kDefaultQuarantineMaxBlockSize;
+  trailer_padding_size_ = kDefaultTrailerPaddingSize;
   stack_cache_ = cache;
 }
 
@@ -230,13 +248,6 @@ bool HeapProxy::Destroy() {
 void* HeapProxy::Alloc(DWORD flags, size_t bytes) {
   DCHECK(heap_ != NULL);
 
-  // Some allocations can pass through without instrumentation.
-  if (allocation_guard_rate() < 1.0 &&
-      base::RandDouble() >= allocation_guard_rate()) {
-    void* alloc = ::HeapAlloc(heap_, flags, bytes);
-    return alloc;
-  }
-
   size_t alloc_size = GetAllocSize(bytes, kDefaultAllocGranularity);
 
   // GetAllocSize can return a smaller value if the alloc size is incorrect
@@ -303,16 +314,8 @@ void* HeapProxy::InitializeAsanBlock(uint8* asan_pointer,
   }
 
   // Poison the block header.
-  Shadow::Poison(asan_pointer,
-                 header_size - sizeof(BlockHeader),
-                 Shadow::kHeapLeftRedzone);
-  Shadow::Poison(block_header,
-                 sizeof(BlockHeader),
-                 Shadow::kHeapBlockHeaderByte);
-
-  // TODO(chrisha): Determine if we can poison the header that the Windows
-  //     heap itself prepends to the allocation. This can also be used as a
-  //     method to determine if an address has ASAN guards or not, in O(1).
+  size_t trailer_size = asan_size - user_size - header_size;
+  Shadow::Poison(asan_pointer, header_size, Shadow::kHeapLeftRedzone);
 
   // Initialize the block fields.
   block_header->magic_number = kBlockHeaderSignature;
@@ -331,7 +334,6 @@ void* HeapProxy::InitializeAsanBlock(uint8* asan_pointer,
   DCHECK(MemoryRangeIsAccessible(block_alloc, user_size));
 
   // Poison the block trailer.
-  size_t trailer_size = asan_size - user_size - header_size;
   Shadow::Poison(block_alloc + user_size,
                  trailer_size,
                  Shadow::kHeapRightRedzone);
@@ -369,21 +371,9 @@ bool HeapProxy::Free(DWORD flags, void* mem) {
   if (mem == NULL)
     return true;
 
-  // This does a simple shift and check of the shadow memory looking for the
-  // beginning of a header. If none is found it returns NULL.
   BlockHeader* block = UserPointerToBlockHeader(mem);
-  if (block == NULL) {
-    // TODO(chrisha): Handle invalid allocation addresses. Currently we can't
-    //     tell these apart from unguarded allocations.
-
-    // Assume that this block was allocated without guards. The cast is
-    // necessary for this to work on Windows XP systems.
-    if (static_cast<BOOLEAN>(::HeapFree(heap_, 0, mem)) != TRUE)
-      return false;
-    return true;
-  }
-
   DCHECK(BlockHeaderToUserPointer(block) == mem);
+
   if (!VerifyChecksum(block)) {
     // The free stack hasn't yet been set, but may have been filled with junk.
     // Reset it.
@@ -456,18 +446,14 @@ size_t HeapProxy::Size(DWORD flags, const void* mem) {
   DCHECK(heap_ != NULL);
   BlockHeader* block = UserPointerToBlockHeader(mem);
   if (block == NULL)
-    return ::HeapSize(heap_, flags, mem);
-  // TODO(chrisha): Handle invalid allocation addresses.
+    return -1;
+
   return block->block_size;
 }
 
 bool HeapProxy::Validate(DWORD flags, const void* mem) {
   DCHECK(heap_ != NULL);
-  const void* address = UserPointerToBlockHeader(mem);
-  if (address == NULL)
-    address = mem;
-  // TODO(chrisha): Handle invalid allocation addresses.
-  return ::HeapValidate(heap_, flags, address) == TRUE;
+  return ::HeapValidate(heap_, flags, UserPointerToBlockHeader(mem)) == TRUE;
 }
 
 size_t HeapProxy::Compact(DWORD flags) {
@@ -640,11 +626,11 @@ void HeapProxy::ReleaseAsanBlock(BlockHeader* block_header) {
 bool HeapProxy::FreeCorruptedBlock(BlockHeader* header, size_t* alloc_size) {
   DCHECK_NE(reinterpret_cast<BlockHeader*>(NULL), header);
 
-  // Set the invalid stack captures to NULL.
-  if (!stack_cache_->StackCapturePointerIsValid(header->alloc_stack))
-    header->alloc_stack = NULL;
-  if (!stack_cache_->StackCapturePointerIsValid(header->free_stack))
-    header->free_stack = NULL;
+  // TODO(chrisha): Is there a better way to do this? We should be able to do an
+  //     exhaustive check of the stack cache to check for validity.
+  // Set the alloc and free pointers to NULL as they might be invalid.
+  header->alloc_stack = NULL;
+  header->free_stack = NULL;
 
   // Calculate the allocation size via the shadow as the header might be
   // corrupted.
@@ -674,16 +660,7 @@ bool HeapProxy::CleanUpAndFreeAsanBlock(BlockHeader* block_header,
 
   // TODO(chrisha): Fill the block with garbage?
 
-  // According to the MSDN documentation about HeapFree the return value needs
-  // to be cast to BOOLEAN in order to support Windows XP:
-  //     Prior to Windows Vista, HeapFree has a bug: only the low byte of the
-  //     return value is correctly indicative of the result.  This is because
-  //     the implementation returns type BOOLEAN (BYTE) despite the prototype
-  //     declaring it as returning BOOL (int).
-  //
-  //     If you care about the return value of HeapFree, and you need to support
-  //     XP and 2003, cast the return value to BOOLEAN before checking it.
-  if (static_cast<BOOLEAN>(::HeapFree(heap_, 0, block_header)) != TRUE) {
+  if (::HeapFree(heap_, 0, block_header) != TRUE) {
     ReportHeapError(block_header, CORRUPTED_HEAP);
     return false;
   }
@@ -784,11 +761,8 @@ HeapProxy::BlockHeader* HeapProxy::UserPointerToBlockHeader(
 
   const uint8* mem = static_cast<const uint8*>(user_pointer);
   const BlockHeader* header = reinterpret_cast<const BlockHeader*>(mem) - 1;
-
-  if (Shadow::GetShadowMarkerForAddress(header) !=
-      Shadow::kHeapBlockHeaderByte) {
+  if (header->magic_number != kBlockHeaderSignature)
     return NULL;
-  }
 
   return const_cast<BlockHeader*>(header);
 }
@@ -930,11 +904,12 @@ HeapProxy::BlockHeader* HeapProxy::FindBlockContainingAddress(uint8* addr) {
   //    neither, we have heap corruption.
 
   // This corresponds to the first case.
-  if (!Shadow::IsLeftRedzone(addr)) {
+  if (Shadow::GetShadowMarkerForAddress(reinterpret_cast<void*>(addr)) !=
+      Shadow::kHeapLeftRedzone) {
     while (addr >= kAddressLowerLimit) {
       addr -= Shadow::kShadowGranularity;
       if (Shadow::GetShadowMarkerForAddress(reinterpret_cast<void*>(addr)) ==
-          Shadow::kHeapBlockHeaderByte) {
+          Shadow::kHeapLeftRedzone) {
         BlockHeader* header = reinterpret_cast<BlockHeader*>(addr -
             (sizeof(BlockHeader) - Shadow::kShadowGranularity));
         if (header->magic_number != kBlockHeaderSignature)
@@ -959,7 +934,7 @@ HeapProxy::BlockHeader* HeapProxy::FindBlockContainingAddress(uint8* addr) {
   BlockHeader* left_header = NULL;
   size_t left_block_size = 0;
   while (Shadow::GetShadowMarkerForAddress(left_bound) ==
-      Shadow::kHeapBlockHeaderByte) {
+      Shadow::kHeapLeftRedzone) {
     BlockHeader* temp_header = reinterpret_cast<BlockHeader*>(left_bound);
     if (temp_header->magic_number == kBlockHeaderSignature) {
       left_header = temp_header;
@@ -974,7 +949,8 @@ HeapProxy::BlockHeader* HeapProxy::FindBlockContainingAddress(uint8* addr) {
   uint8* right_bound = reinterpret_cast<uint8*>(addr);
   BlockHeader* right_header = NULL;
   size_t right_block_size = 0;
-  while (Shadow::IsLeftRedzone(right_bound + Shadow::kShadowGranularity)) {
+  while (Shadow::GetShadowMarkerForAddress(right_bound +
+      Shadow::kShadowGranularity) == Shadow::kHeapLeftRedzone) {
     right_bound += Shadow::kShadowGranularity;
     BlockHeader* temp_header = reinterpret_cast<BlockHeader*>(right_bound);
     if (temp_header->magic_number == kBlockHeaderSignature) {
@@ -1055,7 +1031,7 @@ HeapProxy::BlockHeader* HeapProxy::FindContainingBlock(
   while (addr >= reinterpret_cast<size_t>(kAddressLowerLimit)) {
     // Only look at the addresses tagged as the redzone of a block.
     if (Shadow::GetShadowMarkerForAddress(reinterpret_cast<void*>(addr)) ==
-        Shadow::kHeapBlockHeaderByte) {
+        Shadow::kHeapLeftRedzone) {
       BlockHeader* temp_header = reinterpret_cast<BlockHeader*>(addr);
       if (temp_header->magic_number == kBlockHeaderSignature) {
         size_t block_size = GetAllocSize(temp_header->block_size,
@@ -1088,15 +1064,6 @@ bool HeapProxy::GetBadAccessInformation(AsanErrorInfo* bad_access_info) {
       bad_access_info->error_type != CORRUPTED_BLOCK) {
     bad_access_info->error_type = GetBadAccessKind(bad_access_info->location,
                                                    header);
-  }
-
-  // Makes sure that we don't try to use an invalid stack capture pointer.
-  if (bad_access_info->error_type == CORRUPTED_BLOCK) {
-    // Set the invalid stack captures to NULL.
-    if (!stack_cache_->StackCapturePointerIsValid(header->alloc_stack))
-      header->alloc_stack = NULL;
-    if (!stack_cache_->StackCapturePointerIsValid(header->free_stack))
-      header->free_stack = NULL;
   }
 
   // Checks if there's a containing block in the case of a use after free on a
@@ -1255,12 +1222,6 @@ void HeapProxy::set_default_quarantine_max_block_size(
       default_quarantine_max_size_);
 }
 
-double HeapProxy::cpu_cycles_per_us() {
-  if (!base::IsFinite(cpu_cycles_per_us_))
-    cpu_cycles_per_us_ = GetCpuCyclesPerUs();
-  return cpu_cycles_per_us_;
-}
-
 uint64 HeapProxy::GetTimeSinceFree(const BlockHeader* header) {
   DCHECK(header != NULL);
 
@@ -1275,9 +1236,11 @@ uint64 HeapProxy::GetTimeSinceFree(const BlockHeader* header) {
   // On x86/64, as long as cpu_cycles_per_us_ is 64-bit aligned, the write is
   // atomic, which means we don't care about multiple writers since it's not an
   // update based on the previous value.
-  DCHECK_NE(0.0, cpu_cycles_per_us());
+  if (!base::IsFinite(cpu_cycles_per_us_))
+    cpu_cycles_per_us_ = GetCpuCyclesPerUs();
+  DCHECK_NE(0.0, cpu_cycles_per_us_);
 
-  return cycles_since_free / cpu_cycles_per_us();
+  return cycles_since_free / cpu_cycles_per_us_;
 }
 
 void HeapProxy::GetAsanExtent(const void* user_pointer,
@@ -1315,30 +1278,6 @@ bool HeapProxy::VerifyChecksum(BlockHeader* header) {
   if (old_checksum != header->checksum)
     return false;
   return true;
-}
-
-bool HeapProxy::IsBlockCorrupted(const uint8* block_header) {
-  const BlockHeader* header = reinterpret_cast<const BlockHeader*>(
-      Shadow::AsanPointerToBlockHeader(const_cast<uint8*>(block_header)));
-  if (header->magic_number != kBlockHeaderSignature ||
-      !VerifyChecksum(const_cast<BlockHeader*>(header))) {
-    return true;
-  }
-  return false;
-}
-
-HeapLocker::HeapLocker(HeapProxy* const heap) : heap_(heap) {
-  DCHECK(heap != NULL);
-  if (!heap->Lock()) {
-    LOG(ERROR) << "Unable to lock the heap.";
-  }
-}
-
-HeapLocker::~HeapLocker() {
-  DCHECK(heap_ != NULL);
-  if (!heap_->Unlock()) {
-    LOG(ERROR) << "Unable to unlock the heap.";
-  }
 }
 
 }  // namespace asan

@@ -12,16 +12,12 @@
 :: WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 :: See the License for the specific language governing permissions and
 :: limitations under the License.
-set SYZYGY_PYTHON="%~dp0..\third_party\python_26\python.exe"
-set SYZYGY_SCRIPT="%~dp0tests\run_all_tests.py"
-set SYZYGY_INTERNAL_TESTS="%~dp0internal\run_all_tests.bat"
+set PYTHON="%~dp0..\third_party\python_26\python.exe"
+set SCRIPT="%~dp0tests\run_all_tests.py"
+set INTERNAL_TESTS="%~dp0internal\run_all_tests.bat"
 
-%SYZYGY_PYTHON% %SYZYGY_SCRIPT% %*
+%PYTHON% %SCRIPT% %*
 
-IF EXIST %SYZYGY_INTERNAL_TESTS% (
-%SYZYGY_INTERNAL_TESTS% %*
+IF EXIST %INTERNAL_TESTS% (
+%INTERNAL_TESTS% %*
 )
-
-set SYZYGY_PYTHON=
-set SYZYGY_SCRIPT=
-set SYZYGY_INTERNAL_TESTS=

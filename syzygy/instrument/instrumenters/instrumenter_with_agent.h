@@ -40,7 +40,8 @@ class InstrumenterWithAgent : public InstrumenterInterface {
         allow_overwrite_(false),
         debug_friendly_(false),
         no_augment_pdb_(false),
-        no_strip_strings_(false) {
+        no_strip_strings_(false),
+        old_decomposer_(false) {
   }
 
   ~InstrumenterWithAgent() { }
@@ -112,6 +113,7 @@ class InstrumenterWithAgent : public InstrumenterInterface {
   bool debug_friendly_;
   bool no_augment_pdb_;
   bool no_strip_strings_;
+  bool old_decomposer_;
   // @}
 
   // This is used to save a pointer to the object returned by the call to

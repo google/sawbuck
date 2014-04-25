@@ -168,7 +168,7 @@ nested_heap.h
 Lib files
 ---------
 
-syzyasan_rtl.dll.lib
+syzyasan_rtl.lib
   Library file for importing the SyzyASAN runtime.
 
 USAGE

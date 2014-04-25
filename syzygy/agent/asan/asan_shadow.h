@@ -31,10 +31,6 @@ class Shadow {
   static const size_t kShadowGranularityLog = 3;
   static const size_t kShadowGranularity = 1 << kShadowGranularityLog;
 
-  // One shadow byte for every 8 bytes in a 2G address space.
-  // @note: This is dependent on the process NOT being large address aware.
-  static const size_t kShadowSize = 1 << (31 - kShadowGranularityLog);
-
   // Set up the shadow memory.
   static void SetUp();
 
@@ -48,10 +44,8 @@ class Shadow {
     kAsanMemoryByte = 0xf1,
     kInvalidAddress = 0xf2,
     kUserRedzone = 0xf3,
-    kHeapBlockHeaderByte = 0xf4,
     kHeapLeftRedzone = 0xfa,
     kHeapRightRedzone = 0xfb,
-    kAsanReservedByte = 0xfc,
     kHeapFreedByte = 0xfd,
   };
 
@@ -129,32 +123,10 @@ class Shadow {
   // Calculate the allocation size of a block by using the shadow memory.
   // @param mem A pointer inside the memory block for which we want to calculate
   //     the underlying allocation size.
-  // @returns The underlying allocation size or 0 if it can't find a valid block
-  //     at this address.
+  // @returns The underlying allocation size.
   // @note This function doesn't work for nested blocks.
   // TODO(sebmarchand): Add support for nested blocks.
   static size_t GetAllocSize(const uint8* mem);
-
-  // Look in the shadow memory for the beginning of a block containing a given
-  // address.
-  // @param A pointer inside the memory block for which we want its beginning.
-  // @returns The beginning of the block on success, false otherwise.
-  // @note This function doesn't work for nested blocks.
-  // TODO(sebmarchand): Add support for nested blocks.
-  static const uint8* FindBlockBeginning(const uint8* mem);
-
-  // Returns the block header for an ASan pointer.
-  // @param asan_pointer The ASan pointer for which we want the block header
-  //     pointer.
-  // @returns A pointer to the block header of @p asan_pointer on success, NULL
-  //     otherwise.
-  static const uint8* AsanPointerToBlockHeader(const uint8* asan_pointer);
-
-  // Checks if an address belongs to the left redzone of a block.
-  // @param addr The address that we want to check.
-  // @returns true if |addr| corresponds to a byte in the left redzone of a
-  //     block, false otherwise.
-  static bool IsLeftRedzone(const void* addr);
 
  protected:
   // Reset the shadow memory.
@@ -169,46 +141,10 @@ class Shadow {
                                    std::string* output,
                                    size_t bug_index);
 
-  // The shadow memory.
+  // One shadow byte for every 8 bytes in a 2G address space. By default Chrome
+  // is not large address aware, so we shouldn't be using the high memory.
+  static const size_t kShadowSize = 1 << (31 - kShadowGranularityLog);
   static uint8 shadow_[kShadowSize];
-};
-
-// A helper class to walk over the blocks contained in a given memory region.
-// This uses only the metadata present in the shadow to identify the blocks.
-class ShadowWalker {
- public:
-  // Constructor.
-  // @param lower_bound The lower bound of the region that this walker should
-  //     cover in the actual memory.
-  // @param upper_bound The upper bound of the region that this walker should
-  //     cover in the actual memory.
-  ShadowWalker(const uint8* lower_bound, const uint8* upper_bound);
-
-  // Return the next block in this memory region.
-  // @param block_begin Will receive the pointer to the next block in the region
-  //     of interest. This will point to the beginning of a block, which may not
-  //     necessarily be the block header depending on alignment requirements.
-  //     This will be set to something >= @p upper_bound_ when the function
-  //     returns false.
-  // @return true if a block was found, false otherwise.
-  bool Next(const uint8** block_begin);
-
-  // Reset the walker to its initial state.
-  void Reset();
-
- private:
-  // Move |next_block_| to the next block.
-  void Advance();
-
-  // The bounds of the memory region for this walker.
-  const uint8* lower_bound_;
-  const uint8* upper_bound_;
-
-  // The next block in the shadow, this will point to |upper_bound_| if there's
-  // no next block.
-  const uint8* next_block_;
-
-  DISALLOW_COPY_AND_ASSIGN(ShadowWalker);
 };
 
 // Bring in the implementation of the templated functions.

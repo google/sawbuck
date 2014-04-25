@@ -215,7 +215,11 @@ bool PETransformPolicy::CodeBlockAttributesAreBasicBlockSafe(
       BlockGraph::PADDING_BLOCK |
       BlockGraph::HAS_INLINE_ASSEMBLY |
       BlockGraph::BUILT_BY_UNSUPPORTED_COMPILER |
-      BlockGraph::HAS_EXCEPTION_HANDLING;
+      // TODO(chrisha): Remove this once we've moved to the new decomposer!
+      BlockGraph::ERRORED_DISASSEMBLY |
+      BlockGraph::HAS_EXCEPTION_HANDLING |
+      // TODO(chrisha): Remove this once we've moved to the new decomposer!
+      BlockGraph::DISASSEMBLED_PAST_END;
 
   BlockGraph::BlockAttributes invalid_attributes = kDefaultInvalidAttributes;
   if (allow_inline_assembly)
@@ -243,9 +247,8 @@ bool PETransformPolicy::CodeBlockLayoutIsClConsistent(
   //     putting this in place.
 
   // Iterate over all labels in reverse order, looking at the labels. We want
-  // to make sure there are no invalid labels, and that all data labels are
-  // at the tail end of the block (no non-data label may come after a data
-  // label).
+  // to make sure there are no invalid labels, and that all data labels come
+  // after all code labels.
   BlockGraph::Block::LabelMap::const_reverse_iterator it =
       code_block->labels().rbegin();
   bool saw_non_data_label = false;

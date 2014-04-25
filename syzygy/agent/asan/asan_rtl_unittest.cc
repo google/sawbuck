@@ -242,9 +242,10 @@ void CheckSpecialAccessAndCompareContexts(void* dst, void* src, int len) {
   context_before_hook = NULL;
 }
 
-void AsanErrorCallbackImpl(AsanErrorInfo* error_info, bool compare_context) {
+void AsanErrorCallback(AsanErrorInfo* error_info) {
   // TODO(sebmarchand): Stash the error info in a fixture-static variable and
   // assert on specific conditions after the fact.
+  EXPECT_TRUE(context_before_hook != NULL);
   EXPECT_NE(HeapProxy::UNKNOWN_BAD_ACCESS, error_info->error_type);
 
   EXPECT_EQ(expected_error_type, error_info->error_type);
@@ -252,8 +253,7 @@ void AsanErrorCallbackImpl(AsanErrorInfo* error_info, bool compare_context) {
     // We should at least have the stack trace of the allocation of this block.
     EXPECT_GT(error_info->alloc_stack_size, 0U);
     EXPECT_NE(0U, error_info->alloc_tid);
-    if (error_info->error_type == HeapProxy::USE_AFTER_FREE ||
-        error_info->error_type == HeapProxy::DOUBLE_FREE) {
+    if (error_info->error_type == HeapProxy::USE_AFTER_FREE) {
       EXPECT_GT(error_info->free_stack_size, 0U);
       EXPECT_NE(0U, error_info->free_tid);
     } else {
@@ -269,20 +269,13 @@ void AsanErrorCallbackImpl(AsanErrorInfo* error_info, bool compare_context) {
   }
 
   memory_error_detected = true;
-  if (compare_context) {
-    EXPECT_NE(reinterpret_cast<CONTEXT*>(NULL), context_before_hook);
-    ExpectEqualContexts(*context_before_hook,
-                        error_info->context,
-                        CONTEXT_INTEGER | CONTEXT_CONTROL);
-  }
-}
-
-void AsanErrorCallback(AsanErrorInfo* error_info) {
-  AsanErrorCallbackImpl(error_info, true);
+  ExpectEqualContexts(*context_before_hook,
+                      error_info->context,
+                      CONTEXT_INTEGER | CONTEXT_CONTROL);
 }
 
 void AsanErrorCallbackWithoutComparingContext(AsanErrorInfo* error_info) {
-  AsanErrorCallbackImpl(error_info, false);
+  memory_error_detected = true;
 }
 
 void AssertMemoryErrorIsDetected(void* ptr,
@@ -399,7 +392,8 @@ TEST_F(AsanRtlTest, AsanCheckDoubleFree) {
     mem_ptr = mem.get();
   }
 
-  expected_error_type = HeapProxy::DOUBLE_FREE;
+  CONTEXT context_before_error = {};
+  context_before_hook = &context_before_error;
   SetCallBackFunction(&AsanErrorCallbackWithoutComparingContext);
   EXPECT_FALSE(HeapFreeFunction(heap_, 0, mem_ptr));
   EXPECT_TRUE(memory_error_detected);
@@ -434,7 +428,6 @@ TEST_F(AsanRtlTest, AsanCheckCorruptedBlock) {
   void* mem = HeapAllocFunction(heap_, 0, kAllocSize);
   SetCallBackFunction(&AsanErrorCallbackWithoutComparingContext);
   reinterpret_cast<uint8*>(mem)[-1]--;
-  expected_error_type = HeapProxy::CORRUPTED_BLOCK;
   EXPECT_TRUE(HeapFreeFunction(heap_, 0, mem));
   EXPECT_TRUE(memory_error_detected);
   EXPECT_TRUE(LogContains(HeapProxy::kHeapCorruptedBlock));

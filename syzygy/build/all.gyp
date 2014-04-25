@@ -139,19 +139,9 @@
         {
           'action_name': 'create_lib_zip',
           'msvs_cygwin_shell': 0,
-          'variables': {
-            'conditions': [
-              ['"<(GENERATOR)"=="ninja" or "<(GENERATOR)"=="msvs-ninja"', {
-                'syzyasan_rtl_lib': '<(PRODUCT_DIR)/syzyasan_rtl.dll.lib',
-              }],
-              ['"<(GENERATOR)"=="msvs"', {
-                'syzyasan_rtl_lib': '<(PRODUCT_DIR)/lib/syzyasan_rtl.dll.lib',
-              }],
-            ],
-          },
           'inputs': [
             'create_zip.py',
-            '<(syzyasan_rtl_lib)',
+            '<(PRODUCT_DIR)/lib/syzyasan_rtl.lib',
           ],
           'outputs': [
             '<(PRODUCT_DIR)/lib.zip',
@@ -162,7 +152,7 @@
             '--output',
             '<(PRODUCT_DIR)/lib.zip',
             '--files',
-            '<(syzyasan_rtl_lib)',
+            '<(PRODUCT_DIR)/lib/syzyasan_rtl.lib',
           ],
         },
       ],

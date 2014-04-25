@@ -14,21 +14,9 @@
 #include "syzygy/agent/asan/asan_shadow.h"
 
 #include "base/stringprintf.h"
-#include "syzygy/common/align.h"
 
 namespace agent {
 namespace asan {
-
-namespace {
-
-// The first 64k of the memory are not addressable.
-const size_t kAddressLowerBound = 0x10000;
-
-// The upper bound of the addressable memory.
-const size_t kAddressUpperBound =
-    Shadow::kShadowSize << Shadow::kShadowGranularityLog;
-
-}  // namespace
 
 uint8 Shadow::shadow_[kShadowSize];
 
@@ -36,14 +24,14 @@ void Shadow::SetUp() {
   // Poison the shadow memory.
   Poison(shadow_, kShadowSize, kAsanMemoryByte);
   // Poison the first 64k of the memory as they're not addressable.
-  Poison(0, kAddressLowerBound, kInvalidAddress);
+  Poison(0, 0x10000, kInvalidAddress);
 }
 
 void Shadow::TearDown() {
   // Unpoison the shadow memory.
   Unpoison(shadow_, kShadowSize);
   // Unpoison the first 64k of the memory.
-  Unpoison(0, kAddressLowerBound);
+  Unpoison(0, 0x10000);
 }
 
 void Shadow::Reset() {
@@ -118,11 +106,6 @@ Shadow::ShadowMarker Shadow::GetShadowMarkerForAddress(const void* addr) {
   return static_cast<ShadowMarker>(shadow_[index]);
 }
 
-bool Shadow::IsLeftRedzone(const void* addr) {
-  Shadow::ShadowMarker marker = Shadow::GetShadowMarkerForAddress(addr);
-  return marker == kHeapLeftRedzone || marker == kHeapBlockHeaderByte;
-}
-
 void Shadow::CloneShadowRange(const void* src_pointer,
                               void* dst_pointer,
                               size_t size) {
@@ -184,126 +167,34 @@ void Shadow::AppendShadowMemoryText(const void* addr, std::string* output) {
       kHeapAddressableByte >> 4, kHeapAddressableByte & 15);
   base::StringAppendF(output,
     "  Partially addressable: 01 02 03 04 05 06 07\n");
-  base::StringAppendF(output, "  ASan memory byte:     %x%x\n",
-      kAsanMemoryByte >> 4, kAsanMemoryByte & 15);
-  base::StringAppendF(output, "  Invalid address:     %x%x\n",
-      kInvalidAddress >> 4, kInvalidAddress & 15);
-  base::StringAppendF(output, "  User redzone:     %x%x\n",
-      kUserRedzone >> 4, kUserRedzone & 15);
-  base::StringAppendF(output, "  Block header redzone:     %x%x\n",
-      kHeapBlockHeaderByte >> 4, kHeapBlockHeaderByte & 15);
   base::StringAppendF(output, "  Heap left redzone:     %x%x\n",
       kHeapLeftRedzone >> 4, kHeapLeftRedzone & 15);
   base::StringAppendF(output, "  Heap righ redzone:     %x%x\n",
       kHeapRightRedzone >> 4, kHeapRightRedzone & 15);
-  base::StringAppendF(output, "  ASan reserved byte:     %x%x\n",
-      kAsanReservedByte >> 4, kAsanReservedByte & 15);
   base::StringAppendF(output, "  Freed Heap region:     %x%x\n",
       kHeapFreedByte >> 4, kHeapFreedByte & 15);
 }
 
-const uint8* Shadow::FindBlockBeginning(const uint8* mem) {
-  mem = reinterpret_cast<uint8*>(common::AlignDown(
-      reinterpret_cast<size_t>(mem), kShadowGranularity));
-  // Start by checking if |mem| points inside a block.
-  if (!IsLeftRedzone(mem) &&
-      GetShadowMarkerForAddress(mem) != Shadow::kHeapRightRedzone) {
-    do {
-      mem -= kShadowGranularity;
-    } while (!IsLeftRedzone(mem) &&
-             GetShadowMarkerForAddress(mem) != Shadow::kHeapRightRedzone &&
-             mem > reinterpret_cast<uint8*>(kAddressLowerBound));
-    // If the shadow marker for |mem| corresponds to a right redzone then this
-    // means that its original value was pointing after a block.
-    if (GetShadowMarkerForAddress(mem) == Shadow::kHeapRightRedzone ||
-        mem <= reinterpret_cast<uint8*>(kAddressLowerBound)) {
-      return NULL;
-    }
-  }
-
-  // Look for the beginning of the memory block.
-  while (!IsLeftRedzone(mem) || IsLeftRedzone(mem - kShadowGranularity) &&
-      mem > reinterpret_cast<uint8*>(kAddressLowerBound)) {
-    mem -= kShadowGranularity;
-  }
-  if (mem <= reinterpret_cast<uint8*>(kAddressLowerBound))
-    return NULL;
-
-  return mem;
-}
-
 size_t Shadow::GetAllocSize(const uint8* mem) {
   size_t alloc_size = 0;
-  const uint8* aligned_mem = reinterpret_cast<uint8*>(common::AlignDown(
-      reinterpret_cast<size_t>(mem), kShadowGranularity));
-  size_t alignment_offset = mem - aligned_mem;
-  const uint8* mem_begin = FindBlockBeginning(mem);
+  const uint8* mem_begin = mem;
 
-  if (mem_begin == NULL)
-    return 0;
+  // Look for the beginning of the memory block.
+  while (GetShadowMarkerForAddress(mem_begin) != kHeapLeftRedzone ||
+      GetShadowMarkerForAddress(mem_begin - kShadowGranularity) ==
+          kHeapLeftRedzone) {
+    mem_begin -= kShadowGranularity;
+  }
 
   // Look for the heap right redzone.
-  while (GetShadowMarkerForAddress(mem) != Shadow::kHeapRightRedzone &&
-         mem < reinterpret_cast<uint8*>(kAddressUpperBound)) {
+  while (GetShadowMarkerForAddress(mem) != kHeapRightRedzone)
     mem += kShadowGranularity;
-  }
-
-  if (mem >= reinterpret_cast<uint8*>(kAddressUpperBound))
-    return 0;
 
   // Find the end of the block.
-  while (GetShadowMarkerForAddress(mem) == Shadow::kHeapRightRedzone &&
-         mem < reinterpret_cast<uint8*>(kAddressUpperBound)) {
+  while (GetShadowMarkerForAddress(mem) == kHeapRightRedzone)
     mem += kShadowGranularity;
-  }
 
-  if (mem >= reinterpret_cast<uint8*>(kAddressUpperBound))
-    return 0;
-
-  return mem - mem_begin - alignment_offset;
-}
-
-const uint8* Shadow::AsanPointerToBlockHeader(const uint8* asan_pointer) {
-  if (!IsLeftRedzone(asan_pointer))
-    return NULL;
-  while (GetShadowMarkerForAddress(asan_pointer) != kHeapBlockHeaderByte)
-    asan_pointer += kShadowGranularity;
-  return asan_pointer;
-}
-
-ShadowWalker::ShadowWalker(const uint8* lower_bound, const uint8* upper_bound)
-    : lower_bound_(lower_bound), upper_bound_(upper_bound) {
-  DCHECK_GE(reinterpret_cast<size_t>(lower_bound), kAddressLowerBound);
-  DCHECK_LT(reinterpret_cast<size_t>(lower_bound), kAddressUpperBound);
-  Reset();
-}
-
-void ShadowWalker::Reset() {
-  next_block_ = lower_bound_;
-  // Look for the first block.
-  while (!Shadow::IsLeftRedzone(next_block_) && next_block_ < upper_bound_)
-    next_block_ += Shadow::kShadowGranularity;
-}
-
-void ShadowWalker::Advance() {
-  DCHECK_LT(next_block_, upper_bound_);
-  // Skip the current block left zone.
-  while (Shadow::IsLeftRedzone(next_block_) && next_block_ < upper_bound_)
-    next_block_ += Shadow::kShadowGranularity;
-  // Look for the next block.
-  while (!Shadow::IsLeftRedzone(next_block_) && next_block_ < upper_bound_)
-    next_block_ += Shadow::kShadowGranularity;
-}
-
-bool ShadowWalker::Next(const uint8** block_begin) {
-  DCHECK_NE(reinterpret_cast<const uint8**>(NULL), block_begin);
-  *block_begin = next_block_;
-  // |upper_bound_| or |next_block_| might have a different alignment, so
-  // |next_block_| might be superior to |upper_bound_|.
-  if (next_block_ >= upper_bound_)
-    return false;
-  Advance();
-  return true;
+  return mem - mem_begin;
 }
 
 }  // namespace asan

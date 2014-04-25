@@ -38,7 +38,7 @@ StackCapture** GetFirstFrameAsLink(StackCapture* stack_capture) {
 }  // namespace
 
 size_t StackCaptureCache::compression_reporting_period_ =
-    common::kDefaultReportingPeriod;
+    StackCaptureCache::kDefaultCompressionReportingPeriod;
 
 StackCaptureCache::CachePage::~CachePage() {
   // It's our parent StackCaptureCache's responsibility to clean up the linked
@@ -113,7 +113,7 @@ StackCaptureCache::~StackCaptureCache() {
 }
 
 void StackCaptureCache::Init() {
-  compression_reporting_period_ = common::kDefaultReportingPeriod;
+  compression_reporting_period_ = kDefaultCompressionReportingPeriod;
 }
 
 const StackCapture* StackCaptureCache::SaveStackTrace(
@@ -247,22 +247,6 @@ void StackCaptureCache::ReleaseStackTrace(const StackCapture* stack_capture) {
       statistics_.frames_alive -= stack->num_frames();
     }
   }
-}
-
-bool StackCaptureCache::StackCapturePointerIsValid(
-    const StackCapture* stack_capture) {
-  base::AutoLock lock(current_page_lock_);
-  const uint8* stack_capture_addr =
-      reinterpret_cast<const uint8*>(stack_capture);
-  CachePage* page = current_page_;
-  while (page != NULL) {
-    if (stack_capture_addr >= page->data() &&
-        stack_capture_addr < (page->data() + page->data_size())) {
-      return true;
-    }
-    page = page->next_page_;
-  }
-  return false;
 }
 
 void StackCaptureCache::LogStatistics()  {

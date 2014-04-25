@@ -88,13 +88,9 @@ TEST_F(NestedHeapTest, IntegrationTest) {
         common::AlignUp(reinterpret_cast<size_t>(buffer), alignment));
     uint8* aligned_buffer_copy = reinterpret_cast<uint8*>(
         common::AlignUp(reinterpret_cast<size_t>(buffer_copy), alignment));
-
-    // The simulated 'allocations' that we use must be a multiple of 8 bytes
-    // in length.
-    size_t real_buffer_size = common::AlignDown(
-        kBufferSize - (aligned_buffer - buffer), 8);
-    size_t real_buffer_copy_size = common::AlignDown(
-        kBufferSize - (aligned_buffer_copy - buffer_copy), 8);
+    size_t real_buffer_size = kBufferSize - (aligned_buffer - buffer);
+    size_t real_buffer_copy_size = kBufferSize - (aligned_buffer_copy -
+        buffer_copy);
 
     EXPECT_TRUE(MemoryRangeIsAccessible(aligned_buffer, real_buffer_size));
     asan_PoisonMemoryRange(aligned_buffer, real_buffer_size);

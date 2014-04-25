@@ -24,8 +24,6 @@
         'instrument_app.cc',
         'instrument_app.h',
         'instrumenter.h',
-        'instrumenters/archive_instrumenter.cc',
-        'instrumenters/archive_instrumenter.h',
         'instrumenters/asan_instrumenter.cc',
         'instrumenters/asan_instrumenter.h',
         'instrumenters/branch_instrumenter.cc',
@@ -71,7 +69,6 @@
             'block_graph_analysis_lib',
         '<(src)/syzygy/block_graph/transforms/block_graph_transforms.gyp:'
             'block_graph_transforms_lib',
-        '<(src)/syzygy/ar/ar.gyp:ar_lib',
         '<(src)/syzygy/common/common.gyp:common_lib',
         '<(src)/syzygy/pe/orderers/pe_orderers.gyp:pe_orderers_lib',
         '<(src)/syzygy/pe/pe.gyp:pe_lib',
@@ -105,7 +102,6 @@
       'sources': [
         'instrument_app_unittest.cc',
         'instrument_unittests_main.cc',
-        'instrumenters/archive_instrumenter_unittest.cc',
         'instrumenters/asan_instrumenter_unittest.cc',
         'instrumenters/bbentry_instrumenter_unittest.cc',
         'instrumenters/branch_instrumenter_unittest.cc',
@@ -132,10 +128,7 @@
         '<(src)/base/base.gyp:base',
         '<(src)/testing/gmock.gyp:gmock',
         '<(src)/testing/gtest.gyp:gtest',
-        '<(src)/syzygy/ar/ar.gyp:ar_unittest_utils',
         '<(src)/syzygy/core/core.gyp:core_unittest_utils',
-        '<(src)/syzygy/integration_tests/integration_tests.gyp:'
-            'integration_tests_dll',
         '<(src)/syzygy/pdb/pdb.gyp:pdb_unittest_utils',
         '<(src)/syzygy/pe/pe.gyp:pe_unittest_utils',
         '<(src)/syzygy/pe/pe.gyp:test_dll',

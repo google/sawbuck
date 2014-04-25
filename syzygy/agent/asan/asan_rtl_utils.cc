@@ -94,10 +94,6 @@ void ReportBadMemoryAccess(void* location,
   // Make sure this structure is not optimized out.
   base::debug::Alias(&bad_access_info);
 
-  // TODO(sebmarchand): Check if the heap is corrupt and store the information
-  //     about the corrupt blocks if it's the case.
-  bad_access_info.heap_is_corrupt = false;
-
   asan_runtime->GetBadAccessInformation(&bad_access_info);
 
   // Report this error.

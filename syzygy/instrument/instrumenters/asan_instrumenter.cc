@@ -26,9 +26,7 @@ const char AsanInstrumenter::kAgentDllAsan[] = "syzyasan_rtl.dll";
 AsanInstrumenter::AsanInstrumenter()
     : use_interceptors_(true),
       remove_redundant_checks_(true),
-      use_liveness_analysis_(true),
-      instrumentation_rate_(1.0),
-      asan_rtl_options_(false) {
+      use_liveness_analysis_(true) {
   agent_dll_ = kAgentDllAsan;
 }
 
@@ -62,7 +60,6 @@ bool AsanInstrumenter::InstrumentImpl() {
   asan_transform_->set_use_interceptors(use_interceptors_);
   asan_transform_->set_use_liveness_analysis(use_liveness_analysis_);
   asan_transform_->set_remove_redundant_checks(remove_redundant_checks_);
-  asan_transform_->set_instrumentation_rate(instrumentation_rate_);
 
   // Set up the filter if one was provided.
   if (filter.get()) {
@@ -74,10 +71,6 @@ bool AsanInstrumenter::InstrumentImpl() {
   // transformation will overwrite the source range of created instructions to
   // the source range of corresponding instrumented instructions.
   asan_transform_->set_debug_friendly(debug_friendly_);
-
-  // If RTL options were provided then pass them to the transform.
-  if (asan_rtl_options_)
-    asan_transform_->set_asan_parameters(&asan_params_);
 
   if (!relinker_->AppendTransform(asan_transform_.get()))
     return false;
@@ -92,28 +85,6 @@ bool AsanInstrumenter::ParseAdditionalCommandLineArguments(
   use_liveness_analysis_ = !command_line->HasSwitch("no-liveness-analysis");
   remove_redundant_checks_ = !command_line->HasSwitch("no-redundancy-analysis");
   use_interceptors_ = !command_line->HasSwitch("no-interceptors");
-
-  // Parse the instrumentation rate if one has been provided.
-  static const char kInstrumentationRate[] = "instrumentation-rate";
-  if (command_line->HasSwitch(kInstrumentationRate)) {
-    std::string s = command_line->GetSwitchValueASCII(kInstrumentationRate);
-    double d = 0;
-    if (!base::StringToDouble(s, &d)) {
-      LOG(ERROR) << "Failed to parse floating point value: " << s;
-      return false;
-    }
-    // Cap the rate to the range of valid values [0, 1].
-    instrumentation_rate_ = std::max(0.0, std::min(1.0, d));
-  }
-
-  // Parse ASAN RTL options if present.
-  static const char kAsanRtlOptions[] = "asan-rtl-options";
-  if (asan_rtl_options_ = command_line->HasSwitch(kAsanRtlOptions)) {
-    std::wstring options = command_line->GetSwitchValueNative(kAsanRtlOptions);
-    common::SetDefaultAsanParameters(&asan_params_);
-    if (!common::ParseAsanParameters(options, &asan_params_))
-      return false;
-  }
 
   return true;
 }

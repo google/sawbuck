@@ -99,6 +99,8 @@
         'image_source_map.h',
         'metadata.cc',
         'metadata.h',
+        'old_decomposer.cc',
+        'old_decomposer.h',
         'pdb_info.cc',
         'pdb_info.h',
         'pe_coff_file.h',
@@ -191,20 +193,6 @@
     {
       'target_name': 'pe_unittests',
       'type': 'executable',
-      'variables': {
-        'conditions': [
-          ['"<(GENERATOR)"=="ninja" or "<(GENERATOR)"=="msvs-ninja"', {
-            'test_dll_object_file':
-                'obj/syzygy/pe/test_dll.test_dll.obj',
-          }],
-          ['"<(GENERATOR)"=="msvs"', {
-            'test_dll_object_file': 'obj/test_dll/test_dll.obj',
-          }],
-        ],
-      },
-      'defines': [
-        'TEST_DLL_OBJECT_FILE="<(test_dll_object_file)"',
-      ],
       'sources': [
         'coff_decomposer_unittest.cc',
         'coff_file_unittest.cc',
@@ -223,6 +211,7 @@
         'image_layout_unittest.cc',
         'image_source_map_unittest.cc',
         'metadata_unittest.cc',
+        'old_decomposer_unittest.cc',
         'pdb_info_unittest.cc',
         'pe_coff_file_unittest.cc',
         'pe_coff_image_layout_builder_unittest.cc',
@@ -246,7 +235,6 @@
         'test_dll',
         'test_dll_obj',
         '<(src)/base/base.gyp:base',
-        '<(src)/syzygy/ar/ar.gyp:ar_unittest_utils',
         '<(src)/syzygy/block_graph/block_graph.gyp:block_graph_unittest_lib',
         '<(src)/syzygy/block_graph/orderers/block_graph_orderers.gyp:'
             'block_graph_orderers_lib',
@@ -297,8 +285,6 @@
           'IgnoreDefaultLibraryNames': [
             'libcmtd.lib',
           ],
-          # Force MSVS to produce the same output name as Ninja.
-          'ImportLibrary': '$(OutDir)lib\$(TargetFileName).lib'
         },
       },
       # We more or less want this to always be a release-style executable
@@ -347,9 +333,6 @@
         'test_dll_x64.cc',
         'test_dll_x64.def',
         'test_dll_x64.rc',
-      ],
-      'dependencies': [
-        '<(src)/syzygy/common/common.gyp:syzygy_version',
       ],
       'msvs_settings': {
         'VCLinkerTool': {
@@ -470,12 +453,6 @@
         'export_dll.cc',
         'export_dll.def',
       ],
-      'msvs_settings': {
-        'VCLinkerTool': {
-          # Force MSVS to produce the same output name as Ninja.
-          'ImportLibrary': '$(OutDir)lib\$(TargetFileName).lib'
-        },
-      },
     },
     {
       'target_name': 'decompose_image_to_text',

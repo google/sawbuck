@@ -17,7 +17,7 @@
 #include "base/file_util.h"
 #include "base/logging.h"
 #include "syzygy/common/application.h"
-#include "syzygy/core/file_util.h"
+#include "syzygy/pe/pe_utils.h"
 
 namespace instrument {
 namespace instrumenters {
@@ -31,19 +31,19 @@ bool GetImageFormat(const base::FilePath& path,
   DCHECK(image_format != NULL);
 
   // Determine the type of the input.
-  core::FileType file_type = core::kUnknownFileType;
-  if (!core::GuessFileType(path, &file_type)) {
+  pe::FileType file_type = pe::kUnknownFileType;
+  if (!pe::GuessFileType(path, &file_type)) {
     LOG(ERROR) << "Failed to determine file type of \""
                << path.value() << "\".";
     return false;
   }
 
-  if (file_type == core::kCoffFileType) {
+  if (file_type == pe::kCoffFileType) {
     *image_format = BlockGraph::COFF_IMAGE;
     return true;
   }
 
-  if (file_type == core::kPeFileType) {
+  if (file_type == pe::kPeFileType) {
     *image_format = BlockGraph::PE_IMAGE;
     return true;
   }
@@ -93,6 +93,7 @@ bool InstrumenterWithAgent::ParseCommandLine(const CommandLine* command_line) {
       command_line->GetSwitchValuePath("output-pdb"));
   allow_overwrite_ = command_line->HasSwitch("overwrite");
   debug_friendly_ = command_line->HasSwitch("debug-friendly");
+  old_decomposer_ = command_line->HasSwitch("old-decomposer");
   no_augment_pdb_ = command_line->HasSwitch("no-augment-pdb");
   no_strip_strings_ = command_line->HasSwitch("no-strip-strings");
 
@@ -214,6 +215,7 @@ bool InstrumenterWithAgent::CreateRelinker() {
     relinker->set_output_pdb_path(output_pdb_path_);
     relinker->set_allow_overwrite(allow_overwrite_);
     relinker->set_augment_pdb(!no_augment_pdb_);
+    relinker->set_use_old_decomposer(old_decomposer_);
     relinker->set_strip_strings(!no_strip_strings_);
   }
 
