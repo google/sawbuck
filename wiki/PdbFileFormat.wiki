@@ -160,7 +160,43 @@ Offset table : 5*32 bits :
 <p>This stream ID can be found in the header of the DBI stream.
 
 ===Public===
-<p>This stream ID can be found in the header of the DBI stream.
+<p>This stream contains the offsets of the public symbol in the symbol record stream. Its ID can be found in the header of the DBI stream.
+
+{{{
+struct PublicStreamHeader {
+  // The offset of the table that contains the offsets of the public symbols in
+  // reverse order, in bytes and relative to the |signature| field.
+  uint32 reverse_offset_table_offset;
+
+  // The size of the table that contains the offsets of the public symbols in
+  // reverse order, in bytes.
+  // This is equal to 4 times the number of public symbols.
+  uint32 reverse_offset_table_size;
+
+  // These fields are always equal to zero.
+  uint32 zero_0;
+  uint32 zero_1;
+  uint32 zero_2;
+  uint32 zero_3;
+
+  // Padding field, which can have any value.
+  uint32 padding;
+
+  // A unknow field that is always equal to -1.
+  uint32 unknown;
+
+  // The signature of the stream, which is equal to |kPublicStreamSignature|.
+  uint32 signature;
+
+  // The size of the table of public symbol offsets.
+  // This is equal to 8 times the number of public symbols.
+  uint32 offset_table_size;
+
+  // The offset of the unknown table, in bytes and relative to the end of the
+  // table of public symbol offsets.
+  uint32 unknown_table_offset;
+};
+}}}
 
 ===Modules===
 <p>Those stream IDs can be found in the DBI stream.
