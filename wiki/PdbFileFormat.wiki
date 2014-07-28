@@ -160,18 +160,19 @@ Offset table : 5*32 bits :
 <p>This stream ID can be found in the header of the DBI stream.
 
 ===Public===
-<p>This stream contains the offsets of the public symbol in the symbol record stream. Its ID can be found in the header of the DBI stream.
+<p>The public stream contains information about public symbols. Its ID can be found in the header of the DBI stream. The structure of the stream is described below.
+
+==== Public stream header ====
 
 {{{
 struct PublicStreamHeader {
-  // The offset of the table that contains the offsets of the public symbols in
-  // reverse order, in bytes and relative to the |signature| field.
-  uint32 reverse_offset_table_offset;
+  // The offset of the sorted table of public symbols, in bytes and relative
+  // to the |signature| field of this header.
+  uint32 sorted_symbols_offset;
 
-  // The size of the table that contains the offsets of the public symbols in
-  // reverse order, in bytes.
+  // The size of the sorted table of public symbols, in bytes.
   // This is equal to 4 times the number of public symbols.
-  uint32 reverse_offset_table_size;
+  uint32 sorted_symbols_size;
 
   // These fields are always equal to zero.
   uint32 zero_0;
@@ -185,18 +186,42 @@ struct PublicStreamHeader {
   // A unknow field that is always equal to -1.
   uint32 unknown;
 
-  // The signature of the stream, which is equal to |kPublicStreamSignature|.
+  // The signature of the stream, which is equal to 0xF12F091A.
   uint32 signature;
 
   // The size of the table of public symbol offsets.
   // This is equal to 8 times the number of public symbols.
   uint32 offset_table_size;
 
-  // The offset of the unknown table, in bytes and relative to the end of the
-  // table of public symbol offsets.
-  uint32 unknown_table_offset;
+  // The offset of the sorted table of public symbols, in bytes and relative
+  // to the first table of public symbols offsets.
+  uint32 sorted_symbols_offset_relative;
 };
 }}}
+
+==== Public symbol offsets =====
+
+For each public symbol, in the same order as in the symbol record stream:
+
+- uint32: The offset of the symbol in the symbol record stream, incremented by one.
+<br>- uint32: The value 0x1.
+
+==== Public symbol hash table ====
+
+The public stream then contains the representation of an hash table in which keys are symbol names. This part is omitted when the PDB doesn't contain public symbols.
+
+The hash table representation starts with a 512-byte bit set in which bits corresponding to non-empty buckets are set to one. The bucket corresponding to a symbol name can be computed using the NamedStreamsHash function of [https://code.google.com/p/sawbuck/source/browse/trunk/syzygy/pdb/pdb_util.cc pdb_util.cc].
+
+After the bit set, we find an uint32 with value 0x0.
+
+Then, a representative of each bucket is listed using an uint32 that is the index of a public symbol in the "Public symbol offsets" table multiplied by 12. 
+
+
+==== Sorted table of symbols ====
+
+Finally, for each public symbol, ordered position in the image:
+
+- uint32: Index of the symbol in the symbol record stream.
 
 ===Modules===
 <p>Those stream IDs can be found in the DBI stream.
