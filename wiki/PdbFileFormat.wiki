@@ -1,3 +1,5 @@
+DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/PdbFileFormat new version of the page].
+
 =PDB File Format=
 
 The purpose of this document is to describe the content of the [http://msdn.microsoft.com/en-us/library/yd4f8bd1.aspx PDB File Format]. The structure of the PDB enclosure (which is a Multi-Stream File or MSF) will not be described in detail in this document, which will focus on the contents of the streams.
