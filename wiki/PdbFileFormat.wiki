@@ -167,7 +167,7 @@ Offset table : 5*32 bits :
 {{{
 struct PublicStreamHeader {
   // The offset of the sorted table of public symbols, in bytes and relative
-  // to the |signature| field of this header.
+  // to the |unknown| field of this header.
   uint32 sorted_symbols_offset;
 
   // The size of the sorted table of public symbols, in bytes.
@@ -183,19 +183,20 @@ struct PublicStreamHeader {
   // Padding field, which can have any value.
   uint32 padding;
 
-  // A unknow field that is always equal to -1.
+  // An unknown field that is always equal to -1.
   uint32 unknown;
 
-  // The signature of the stream, which is equal to 0xF12F091A.
+  // The signature of the stream, which is equal to |kPublicStreamSignature|.
   uint32 signature;
 
   // The size of the table of public symbol offsets.
   // This is equal to 8 times the number of public symbols.
   uint32 offset_table_size;
 
-  // The offset of the sorted table of public symbols, in bytes and relative
-  // to the first table of public symbols offsets.
-  uint32 sorted_symbols_offset_relative;
+  // The size of the hash table of public symbols, in bytes. This includes
+  // a 512-byte bitset with a 1 in used buckets followed by an array identifying
+  // a representative of each bucket.
+  uint32 hash_table_size;
 };
 }}}
 
@@ -210,7 +211,7 @@ For each public symbol, in the same order as in the symbol record stream:
 
 The public stream then contains the representation of an hash table in which keys are symbol names. This part is omitted when the PDB doesn't contain public symbols.
 
-The hash table representation starts with a 512-byte bit set in which bits corresponding to non-empty buckets are set to one. The bucket corresponding to a symbol name can be computed using the NamedStreamsHash function of [https://code.google.com/p/sawbuck/source/browse/trunk/syzygy/pdb/pdb_util.cc pdb_util.cc].
+The hash table representation starts with a 512-byte bit set in which bits corresponding to non-empty buckets are set to one. The bucket corresponding to a symbol name can be computed using the HashString() function of [https://code.google.com/p/sawbuck/source/browse/trunk/syzygy/pdb/pdb_util.cc pdb_util.cc].
 
 After the bit set, we find an uint32 with value 0x0.
 
@@ -219,7 +220,7 @@ Then, a representative of each bucket is listed using an uint32 that is the inde
 
 ==== Sorted table of symbols ====
 
-Finally, for each public symbol, ordered position in the image:
+Finally, for each public symbol, ordered address in the image:
 
 - uint32: Index of the symbol in the symbol record stream.
 
