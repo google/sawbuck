@@ -1,3 +1,6 @@
+*DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/PythonBuild new version] of the page.*
+
+
 #summary Python build and develoment process.
 
 
