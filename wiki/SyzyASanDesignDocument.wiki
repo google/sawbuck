@@ -1,3 +1,5 @@
+*DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/SyzyASanDesignDocument new version] of the page.*
+
 #summary An address sanitizer based on Syzygy.
 
 <wiki:toc max_depth="3" />
