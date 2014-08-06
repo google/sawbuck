@@ -1,5 +1,7 @@
 #summary SyzyProf is an instrumenting hierarchical performance profiler for Chrome
 
+*DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/SyzyProf new version] of the page.*
+
 = Introduction =
 
 The end goal for SyzyProf is to be a turnkey instrumenting profiler that's able to instrument and profile any shipping or local build of Chrome on the spot, usable by anyone at any time, anywhere.
