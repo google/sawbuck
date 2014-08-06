@@ -1,5 +1,8 @@
 #summary Policies and guidelines for Syzygy contributions.
 
+*DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/SyzygyDevelopmentGuide new version] of the page.*
+
+
 = Introduction =
 
 Syzygy is all about taking apart perfectly good executable binaries, mutating them in interesting ways, and then outputting new, perfectly good executable binaries.
