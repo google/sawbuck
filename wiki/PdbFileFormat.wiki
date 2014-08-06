@@ -1,1 +1,1 @@
-<font size=18>DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/PdbFileFormat new version] of the page.</font>
+*DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/PdbFileFormat new version] of the page.*
