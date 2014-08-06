@@ -1,3 +1,5 @@
+*DEPRECATED: Please use the [https://code.google.com/p/syzygy/wiki/SyzygyDesign new version] of the page.*
+
 #summary Design overview for the Syzygy toolchain.
 
 = Syzygy - profile guided, post-link executable reordering. =
