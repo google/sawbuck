@@ -1,0 +1,1 @@
+**DEPRECATED: Please use the [new version](https://code.google.com/p/syzygy/wiki/SyzyASanBug) of the page.**
